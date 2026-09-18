@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# clang-cl + xwin cross-build output
+/build-clangcl/
+/build-dll/
+/build-mt/

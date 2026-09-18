@@ -9,6 +9,7 @@
 #include "ap_bridge.h"
 #include "pipe_server.h"
 #include <fstream>
+#include <cstdlib>
 
 namespace {
 	std::string GetConfigPath() {
@@ -40,7 +41,11 @@ namespace {
 			std::cout << prompt << " [" << defaultVal << "]: ";
 		}
 		std::string input;
-		std::getline(std::cin, input);
+		if (!std::getline(std::cin, input)) {
+			// stdin closed (piped/redirected): don't spin forever on a required field.
+			std::cout << "\nstdin closed; aborting.\n";
+			std::exit(1);
+		}
 		if (input.empty()) return defaultVal;
 		return input;
 	}
@@ -260,8 +265,19 @@ int main() {
 	}
 	std::cout << "\n";
 
-	// Launch MCC
-	if (isWindowsStore) {
+	// Launch MCC.
+	//
+	// HALOAP_NO_LAUNCH lets an external wrapper start the game instead. On Linux
+	// this is required, not a convenience: the launcher and HaloAP.dll talk over
+	// the named pipe \\.\pipe\HaloAP, which belongs to the wineserver, so both
+	// must live in the same one. Steam always starts a Proton game with the
+	// `waitforexitandrun` verb, which runs `wineserver -w` and refuses to launch
+	// until the prefix's wineserver has exited -- and this launcher *is* that
+	// wineserver. So on Linux the wrapper starts MCC in the launcher's own
+	// wineserver and this step has to be skipped.
+	if (std::getenv("HALOAP_NO_LAUNCH")) {
+		std::cout << "HALOAP_NO_LAUNCH set - not launching MCC; start it yourself.\n";
+	} else if (isWindowsStore) {
 		std::cout << "Launching MCC (Windows Store, anti-cheat disabled)...\n";
 		std::cout << "Please launch MCC with anti-cheat off from the Start menu if it doesn't start automatically.\n";
 		ShellExecuteA(nullptr, "open", exePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);

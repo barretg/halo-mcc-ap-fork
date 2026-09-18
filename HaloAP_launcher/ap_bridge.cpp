@@ -1,6 +1,6 @@
 #include "ap_bridge.h"
-#include "data/mission_map.h"
-#include "data/chapter_map.h"
+#include "Data/mission_map.h"
+#include "Data/chapter_map.h"
 #include "shared/common.h"
 #include <iostream>
 #include <vector>

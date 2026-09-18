@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <cstdio>
+#include <cstdlib>
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -31,6 +32,28 @@ namespace
 
     void SetupConsole()
     {
+        // HALOAP_LOG=<path> sends this DLL's output to a file instead of the
+        // console, and HALOAP_NO_CONSOLE suppresses the console entirely.
+        //
+        // Both exist for Linux/Proton. AllocConsole() inside a Proton-run MCC
+        // gives a wine console that cannot be scrolled back or captured, and
+        // allocating it appears to destabilise the game: with the console the
+        // title screen throws "Fatal Error" and mission select freezes, without
+        // it the same build plays normally.
+        const char* logPath = std::getenv("HALOAP_LOG");
+        const bool noConsole = std::getenv("HALOAP_NO_CONSOLE") != nullptr;
+
+        if (logPath && *logPath) {
+            freopen_s(&g_consoleOut, logPath, "w", stdout);
+            freopen_s(&g_consoleErr, logPath, "a", stderr);
+            setvbuf(stdout, nullptr, _IONBF, 0);
+            setvbuf(stderr, nullptr, _IONBF, 0);
+            return;
+        }
+        if (noConsole) {
+            return;
+        }
+
         AllocConsole();
         SetConsoleTitleW(L"HaloAP Dll Console");
 

@@ -4,6 +4,7 @@ The newest release can always be found [here](https://github.com/spencer2585/MCC
 
 ## Documentation
 [Setup Guide](Docs/setup.md)<br/>
+[Setup Guide — Linux (Proton)](Docs/setup-linux.md)<br/>
 [Current Features](Docs/randomization.md)<br/>
 [Known Bugs](Docs/bugs.md)<br/>
 [Planned Features](Docs/planning.md)<br/>
