@@ -65,8 +65,11 @@ namespace haloap {
                 return;
             }
             
-            // After the two flag checks, before calling original:
-            if (msgType == 0x1 || msgType == 0xD)
+            // Only teardown (0xD) means the mission is over. 0x1 is resume,
+            // which also fires on every unpause and window refocus; treating
+            // it as a quit let ApplyForcedSkulls poke the skull bitmask
+            // mid-mission.
+            if (msgType == 0xD)
             {
                 haloap::SetInMission(false);
             }
