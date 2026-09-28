@@ -365,3 +365,5 @@ FodyWeavers.xsd
 /build-clangcl/
 /build-dll/
 /build-mt/
+/build-apworld/
+/build/

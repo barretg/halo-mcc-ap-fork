@@ -86,7 +86,7 @@ static constexpr uint64_t kGameScoring[kGameCount] = {
     0x0544D42C9B, // Halo 2
     0x1D04D46C99, // Halo 3
     0x1C00842898, // Halo 4
-    0x1D04D44C99, // ODST
+    0,            // ODST (not supported: skulls there are left alone)
     0x1C00842898, // Reach
 };
 
@@ -96,7 +96,7 @@ static constexpr uint64_t kGameNonScoring[kGameCount] = {
     0x22BB2B9264, // Halo 2
     0x2291298164, // Halo 3
     0x2000090104, // Halo 4
-    0x2091298164, // ODST
+    0,            // ODST
     0x2000090104, // Reach
 };
 
@@ -535,6 +535,9 @@ namespace haloap
             applicable = kGameScoring[g_lobbyGame] | kGameNonScoring[g_lobbyGame];
         }
 
+        // Games with no skull set (ODST) aren't managed
+        if (applicable == 0) return;
+
         if (g_inMission.load()) return;
 
         uint64_t* bitmask = ResolveSkullBitmask();
@@ -545,7 +548,7 @@ namespace haloap
 
         updated |= forcedOn;
         updated &= ~forcedOff;
-        // The mask is shared by every game: drop skulls the lobby's game doesn't have
+        // Each game's lobby has its own mask; keep it to skulls that game has
         updated &= applicable;
 
         if (updated != current)
