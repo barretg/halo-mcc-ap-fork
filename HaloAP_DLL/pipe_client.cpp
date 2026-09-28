@@ -226,6 +226,7 @@ void PipeClient::HandleMessage(const std::string& message)
     const std::string completedPrefix = "COMPLETED:";
     const std::string finalMissionPrefix = "FINAL_MISSION:";
     const std::string skullsanityPrefix = "SKULLSANITY: ";
+    const std::string missionsRequiredPrefix = "MISSIONS_REQUIRED:";
 
     if (message.rfind(itemPrefix, 0) == 0)
     {
@@ -263,6 +264,14 @@ void PipeClient::HandleMessage(const std::string& message)
         int idx = std::atoi(message.c_str() + finalMissionPrefix.size());
         haloap::GetItemHandler().setFinalMission(idx);
         printf("[pipe] Final Mission set to index %d\n", idx);
+        return;
+    }
+
+    if (message.rfind(missionsRequiredPrefix, 0) == 0)
+    {
+        int count = std::atoi(message.c_str() + missionsRequiredPrefix.size());
+        haloap::GetItemHandler().setMissionsRequired(count);
+        printf("[pipe] Missions required for final: %d\n", count);
         return;
     }
 

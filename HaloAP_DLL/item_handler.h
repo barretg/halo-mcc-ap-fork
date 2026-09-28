@@ -23,19 +23,19 @@ namespace haloap {
         
         void setFinalMission(int idx);
 
+        // How many other missions must be completed before the final one opens
+        void setMissionsRequired(int count);
+
     private:
         mutable std::mutex m_mutex;
         std::set<int> m_unlockedMissions;
         bool m_missionCompleted[10] = {};
         int m_finalMission = 9;
+        int m_missionsRequired = 9;
 
         // Translate AP item ID to mission index (0-9).
         // Returns -1 if the item is not a mission unlock.
         int translateItemToMission(int itemID) const;
-        
-        //Translate AP item ID to skull disabler index (0-20, matching
-        //CE_SKULL_DISABLERS in items.py). Returns -1 if not a skull disabler.
-        int translateItemToSkullDisabler(int itemID) const;
     };
 
     // Global singleton instance.

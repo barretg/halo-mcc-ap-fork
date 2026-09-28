@@ -129,5 +129,50 @@ I Am Your Sword". The H4EK scripts predate the shipped build, so they only partl
 The Composer and Infinity blocks in memory matched the offline extraction entry for entry,
 including where each block starts.
 
+## H2 / H3 chapter title indices per mission
+
+Taken from each map's `ui\chapter_titles` string list (H2EK, H3EK). Live hits matched
+index 0 on H2 01a and 01b and on H3 010. The other indices assume the string list order
+equals the scenario's title block order, which the names suggest but hasn't been checked
+per map.
+
+**H2** (every entry below is a chapter, except where noted):
+
+| Map | Chapter cards |
+|---|---|
+| `00a_introduction` | none (0, 1 are cinematic location cards) |
+| `01a_tutorial` | 0: One Size Fits All |
+| `01b_spacestation` | 0: Home Field Advantage, 1: Priority Shift, 2: Authorized Personnel Only, 3: Return to Sender (4 `title_gun_alt` is empty) |
+| `03a_oldmombasa` | 0: They'll Regret That Too, 1: A Day at the Beach, 2: Speed Zone Ahead |
+| `03b_newmombasa` | 0/1/2: Ladies Like... (one card, text varies by difficulty), 3: This Town Ain't Big Enough for Both of Us, 4: Field Expedient |
+| `04a_gasgiant` | 0: A Whisper in the Storm, 1: To the Hunt |
+| `04b_floodlab` | 0: Juggernaut, 1: Hey, Watch This!, 2: Dead or Alive...Actually, Just Dead |
+| `05a_deltaapproach` | 0: Helljumpers, 1: You Break It, You Buy It, 2: Off the Rock, Through the Bush, Nothing But Jackal |
+| `05b_deltatowers` | 0: Testament, 1: One-Way Ticket, 2: Pressure (`title_2alt`), 3: Sorry, Were You in the Middle of Something? |
+| `06a_sentinelwalls` | 0: Uncomfortable Silence, 1: Buyer's Remorse, 2: 100,000 Years' War (3 is a cinematic location card) |
+| `06b_floodzone` | 0: Objects in Mirror are Larger Than They Appear, 1: Healthy Competition, 2: Shooting Gallery, 3: That Old, Familiar Feeling |
+| `07a_highcharity` | 0: Inside Job, 1: You Can Thank Me Later, 2: Grudge-Match, 3: Turning in Their Graves |
+| `07b_forerunnership` | 0: Cross-Purposes, 1: Please, Make Yourself at Home, 2: Sanctified, 3: Once More, With Feeling |
+| `08a_deltacliffs` | 0: Oh, So That's How it Is, 1: Step Aside, Let the Man Go Through, 2: Fight Club |
+| `08b_deltacontrol` | 0: Your Ass, My Size-24 Hoof, 1: Backseat Driver, 2: Delusions and Grandeur |
+
+Whether 05b's "Pressure" is shown in the shipped game (vs. "One-Way Ticket") is unchecked.
+
+**H3**: the block holds the chapter cards (`title_N`) followed by objectives (`obj_N`).
+Only the `title_N` indices below are chapters.
+
+| Map | Chapter cards |
+|---|---|
+| `005_intro`, `130_epilogue` | none |
+| `010_jungle` | 0: Walk It Off, 1: Charlie Foxtrot, 2: Quid Pro Quo |
+| `020_base` | 0: Know Your Role..., 1: Gift with Purchase, 2: Last One Out, Get the Lights |
+| `030_outskirts` | 0: Full Contact Safari, 1: The Broken Path |
+| `040_voi` | 0: Ghost Town, 1: Think Big, 2: Judgment |
+| `050_floodvoi` | 0: It Followed Me Home, 1: Shadow of Intent, 2: Infinite Devil Machine |
+| `070_waste` | 0: Installation 00, 1: Forward Unto Dawn, 2: Real Men Don't Read Maps |
+| `100_citadel` | 0: Trident, 1: If You Want it Done Right..., 2: Journey's End, 3: Revelation |
+| `110_hc` | 0: Rampant, 1: Nor Hell a Fury... |
+| `120_halo` | 0: Full Circle, 1: The Way the World Ends |
+
 The H2/H3/H4 editing kits (`H2EK`, `H3EK`, `H4EK` in the Steam library) include mission
 scripts that can be mined the same way for per-mission title indices.

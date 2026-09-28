@@ -63,6 +63,12 @@ namespace haloap {
         
         m_sendToDll("FINAL_MISSION:" + std::to_string(m_finalMission));
         std::cout << "[ap] Sent final mission: " << m_finalMission << "\n";
+
+        if (m_ceMissionsRequired >= 0)
+        {
+            m_sendToDll("MISSIONS_REQUIRED:" + std::to_string(m_ceMissionsRequired));
+            std::cout << "[ap] Sent CE missions required: " << m_ceMissionsRequired << "\n";
+        }
     }
 
     APBridge::APBridge() = default;
@@ -280,7 +286,15 @@ namespace haloap {
         
         if (slotData.contains("final_mission"))
         {
-            m_finalMission = MISSION_NAME_TO_INDEX[slotData.at("final_mission").get<std::string>()];
+            // "" when CE isn't in the world
+            auto it = MISSION_NAME_TO_INDEX.find(slotData.at("final_mission").get<std::string>());
+            if (it != MISSION_NAME_TO_INDEX.end())
+                m_finalMission = it->second;
+        }
+
+        if (slotData.contains("missions_required") && slotData["missions_required"].contains("ce"))
+        {
+            m_ceMissionsRequired = slotData["missions_required"]["ce"].get<int>();
         }
         
         if (slotData.contains("skullsanity"))

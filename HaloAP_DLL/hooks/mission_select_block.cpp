@@ -437,6 +437,19 @@ namespace haloap
                 strstr(label, "CROSS-GAME") != nullptr);
         }
 
+        // Game code (apworld numbering) for a game title button, 0 if not recognised.
+        // Only CE's label ("HALO: CE ANNIVERSARY") has been seen in logs so far.
+        static int GameCodeFromTitle(const char* label)
+        {
+            if (strstr(label, "ODST")) return 5;
+            if (strstr(label, "REACH")) return 6;
+            if (strstr(label, "HALO 4")) return 4;
+            if (strstr(label, "HALO 3")) return 3;
+            if (strstr(label, "HALO 2")) return 2;
+            if (strstr(label, "CE")) return 1;
+            return 0;
+        }
+
         static bool g_shouldCollapse = false;
 
         void DetourMenuNav(void* controller)
@@ -477,7 +490,14 @@ namespace haloap
 
             g_shouldCollapse = hasLabel && IsGameTitle(label);
             if (g_shouldCollapse)
+            {
                 printf("[hook] Navigating to game: '%s', will collapse buttons\n", label);
+                int game = GameCodeFromTitle(label);
+                if (game)
+                    SetLobbyGame(game);
+                else
+                    printf("[hook] No game code for title '%s'\n", label);
+            }
 
             g_menuNavOriginal(controller);
 

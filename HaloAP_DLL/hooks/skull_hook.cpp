@@ -70,21 +70,46 @@ static constexpr uint64_t kDisablerBits[kDisablerCount] = {
     kBitAcrophobia,         // 22 Acrophobia
 };
 
-// Forced-skull bitmasks per skullsanity tier
-static constexpr uint64_t kForcedNonScoring =
-    kBitAcrophobia | kBitBandana | kBitBoom | kBitGhost |
-    kBitGruntBirthdayParty | kBitGruntFuneral |
-    kBitMalfunction | kBitPinata | kBitSputnik;
+// ---------------------------------------------------------------------------
+// Per-game skull sets (https://www.halopedia.org/MCC:Skulls, same data as the
+// apworld's data/skulls.py). Indexed by the apworld game code:
+//   1 CE, 2 Halo 2, 3 Halo 3, 4 Halo 4, 5 ODST, 6 Reach
+// Scoring = multiplier above 1.00x; non-scoring = 1.00x and 0.00x.
+// ---------------------------------------------------------------------------
+static constexpr int kGameCount = 7;
+static constexpr int kGameCE = 1;
+static constexpr int kSharedGameCode = 7; // skull items that apply to every game
 
-static constexpr uint64_t kForcedAll =
-    kBitAnger | kBitBlackEye | kBitBlind | kBitBoom | kBitCatch |
-    kBitEyePatch | kBitFamine | kBitFog | kBitForeign | kBitGhost |
-    kBitGruntBirthdayParty | kBitGruntFuneral | kBitIron | kBitMalfunction |
-    kBitMythic | kBitPinata | kBitRecession | kBitSputnik |
-    kBitThatsJustWrong | kBitThunderstorm | kBitToughLuck |
-    kBitAcrophobia | kBitBandana;
+static constexpr uint64_t kGameScoring[kGameCount] = {
+    0,
+    0x1504846C99, // CE
+    0x0544D42C9B, // Halo 2
+    0x1D04D46C99, // Halo 3
+    0x1C00842898, // Halo 4
+    0x1D04D44C99, // ODST
+    0x1C00842898, // Reach
+};
 
-static constexpr uint64_t kScoringOnly = kForcedAll & ~kForcedNonScoring;
+static constexpr uint64_t kGameNonScoring[kGameCount] = {
+    0,
+    0x2021238044, // CE
+    0x22BB2B9264, // Halo 2
+    0x2291298164, // Halo 3
+    0x2000090104, // Halo 4
+    0x2091298164, // ODST
+    0x2000090104, // Reach
+};
+
+static constexpr int kSkullBitCount = 38;
+static constexpr int kSkullItemOffset = 90000; // SKULL_OFFSET in the apworld's constants.py
+
+static_assert(kGameScoring[kGameCE] ==
+    (kBitAnger | kBitBlackEye | kBitBlind | kBitCatch | kBitEyePatch | kBitFamine |
+     kBitFog | kBitForeign | kBitIron | kBitMythic | kBitRecession |
+     kBitThatsJustWrong | kBitThunderstorm | kBitToughLuck), "CE scoring mask");
+static_assert(kGameNonScoring[kGameCE] ==
+    (kBitAcrophobia | kBitBandana | kBitBoom | kBitGhost | kBitGruntBirthdayParty |
+     kBitGruntFuneral | kBitMalfunction | kBitPinata | kBitSputnik), "CE non-scoring mask");
 
 // ---------------------------------------------------------------------------
 // Skull ID -> AP location ID (for skull pickup detection)
@@ -239,10 +264,38 @@ namespace haloap
         PipeClient*      g_pipe               = nullptr;
 
         std::mutex        g_skullMutex;
-        uint64_t          g_forcedOnMask   = 0;
-        uint64_t          g_forcedOffMask  = 0;
-        uint64_t          g_unlockedMask   = 0;
+        int               g_tier           = 0;
+        // Unlocked skull bits per game code; [kSharedGameCode] applies to every game
+        uint64_t          g_unlockedMask[kSharedGameCode + 1] = {};
+        // Game whose lobby is open; CE until a game title is picked in the menu
+        int               g_lobbyGame      = kGameCE;
         std::atomic<bool> g_inMission{ false };
+
+        // Skulls the tier forces on / off for a game (only that game's skulls)
+        uint64_t TierForcedOn(int tier, int game)
+        {
+            return tier == 2 ? kGameScoring[game] : 0;
+        }
+
+        uint64_t TierForcedOff(int tier, int game)
+        {
+            switch (tier)
+            {
+            case 1:  // non_scoring: non-scoring skulls locked off until received
+            case 2:  // all: scoring locked on, non-scoring locked off
+                return kGameNonScoring[game];
+            case 3:  // inverted: all locked off until received
+                return kGameScoring[game] | kGameNonScoring[game];
+            default: // off
+                return 0;
+            }
+        }
+
+        // Caller holds g_skullMutex
+        uint64_t UnlockedFor(int game)
+        {
+            return g_unlockedMask[game] | g_unlockedMask[kSharedGameCode];
+        }
 
         // -----------------------------------------------------------------
         // Find OnSkullClaimed handler via SSL function registration table
@@ -415,58 +468,73 @@ namespace haloap
     void SetSkullsanityTier(int tier)
     {
         std::lock_guard<std::mutex> lock(g_skullMutex);
-        switch (tier)
-        {
-        case 1:  // non_scoring: non-scoring skulls locked off until received
-            g_forcedOnMask  = 0;
-            g_forcedOffMask = kForcedNonScoring;
-            break;
-        case 2:  // all_on: scoring locked on, non-scoring locked off
-            g_forcedOnMask  = kScoringOnly;
-            g_forcedOffMask = kForcedNonScoring;
-            break;
-        case 3:  // inverted: all locked off until received
-            g_forcedOnMask  = 0;
-            g_forcedOffMask = kForcedAll;
-            break;
-        default: // off
-            g_forcedOnMask  = 0;
-            g_forcedOffMask = 0;
-            break;
-        }
-        printf("[skull] skullsanity tier %d -> forcedOn=0x%llx forcedOff=0x%llx\n",
-               tier,
-               static_cast<unsigned long long>(g_forcedOnMask),
-               static_cast<unsigned long long>(g_forcedOffMask));
+        g_tier = tier;
+        printf("[skull] skullsanity tier %d (lobby game %d -> forcedOn=0x%llx forcedOff=0x%llx)\n",
+               tier, g_lobbyGame,
+               static_cast<unsigned long long>(TierForcedOn(tier, g_lobbyGame)),
+               static_cast<unsigned long long>(TierForcedOff(tier, g_lobbyGame)));
     }
 
-    void UnlockSkull(int disablerIdx)
+    bool UnlockSkullItem(int itemID)
     {
-        if (disablerIdx < 0 || disablerIdx >= kDisablerCount) return;
-        uint64_t bit = kDisablerBits[disablerIdx];
+        int game = 0;
+        uint64_t bit = 0;
 
+        int rel = itemID - kSkullItemOffset;
+        if (rel >= 1 && rel <= kDisablerCount)
         {
-            std::lock_guard<std::mutex> lock(g_skullMutex);
-            g_unlockedMask |= bit;
+            // 1.2.1 CE items, ordered like the old CE_SKULL_DISABLERS list
+            game = kGameCE;
+            bit = kDisablerBits[rel - 1];
+        }
+        else if (rel >= 100)
+        {
+            // SKULL_OFFSET + game_code * 100 + bit + 1 (apworld data/skulls.py)
+            game = rel / 100;
+            int bitIdx = rel % 100 - 1;
+            if (game < 1 || game > kSharedGameCode || bitIdx < 0 || bitIdx >= kSkullBitCount)
+                return false;
+            bit = 1ULL << bitIdx;
+        }
+        else
+        {
+            return false;
         }
 
-        printf("[skull] unlocked skull idx %d (bit 0x%llx), unlocked mask now 0x%llx\n",
-               disablerIdx,
-               static_cast<unsigned long long>(bit),
-               static_cast<unsigned long long>(g_unlockedMask));
+        uint64_t unlocked;
+        {
+            std::lock_guard<std::mutex> lock(g_skullMutex);
+            g_unlockedMask[game] |= bit;
+            unlocked = g_unlockedMask[game];
+        }
+
+        printf("[skull] item %d unlocked bit 0x%llx for game %d, unlocked mask now 0x%llx\n",
+               itemID, static_cast<unsigned long long>(bit), game,
+               static_cast<unsigned long long>(unlocked));
+        return true;
+    }
+
+    void SetLobbyGame(int game)
+    {
+        if (game < 1 || game >= kGameCount) return;
+        std::lock_guard<std::mutex> lock(g_skullMutex);
+        if (g_lobbyGame != game)
+            printf("[skull] lobby game %d -> %d\n", g_lobbyGame, game);
+        g_lobbyGame = game;
     }
 
     void ApplyForcedSkulls()
     {
-        uint64_t forcedOn, forcedOff, unlocked;
+        uint64_t forcedOn, forcedOff, applicable;
         {
             std::lock_guard<std::mutex> lock(g_skullMutex);
-            forcedOn  = g_forcedOnMask;
-            forcedOff = g_forcedOffMask;
-            unlocked  = g_unlockedMask;
+            if (g_tier == 0) return;
+            uint64_t unlocked = UnlockedFor(g_lobbyGame);
+            forcedOn   = TierForcedOn(g_tier, g_lobbyGame) & ~unlocked;
+            forcedOff  = TierForcedOff(g_tier, g_lobbyGame) & ~unlocked;
+            applicable = kGameScoring[g_lobbyGame] | kGameNonScoring[g_lobbyGame];
         }
 
-        if (forcedOn == 0 && forcedOff == 0) return;
         if (g_inMission.load()) return;
 
         uint64_t* bitmask = ResolveSkullBitmask();
@@ -475,11 +543,10 @@ namespace haloap
         uint64_t current = *bitmask;
         uint64_t updated = current;
 
-        uint64_t toForceOn = forcedOn & ~unlocked;
-        updated |= toForceOn;
-
-        uint64_t toForceOff = forcedOff & ~unlocked;
-        updated &= ~toForceOff;
+        updated |= forcedOn;
+        updated &= ~forcedOff;
+        // The mask is shared by every game: drop skulls the lobby's game doesn't have
+        updated &= applicable;
 
         if (updated != current)
         {
@@ -500,13 +567,13 @@ namespace haloap
     uint64_t GetUnlockedMask()
     {
         std::lock_guard<std::mutex> lock(g_skullMutex);
-        return g_unlockedMask;
+        return UnlockedFor(g_lobbyGame);
     }
     
     uint64_t GetForcedMask()
     {
         std::lock_guard<std::mutex> lock(g_skullMutex);
-        return g_forcedOnMask | g_forcedOffMask;
+        return TierForcedOn(g_tier, g_lobbyGame) | TierForcedOff(g_tier, g_lobbyGame);
     }
 
 } // namespace haloap

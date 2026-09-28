@@ -17,9 +17,7 @@ namespace haloap {
         //   Keyes            = 109000
         //   The Maw          = 110000
         constexpr int CE_OFFSET = 100000;
-        constexpr int CE_SKULL_OFFSET = 90000;
         constexpr int MISSION_COUNT = 10;
-        constexpr int SKULL_DISABLER_COUNT = 23;
     }
     
     bool m_missionCompleted[10] = {};
@@ -35,14 +33,8 @@ namespace haloap {
             return;
         }
         
-        int disablerIdx = translateItemToSkullDisabler(itemID);
-        if (disablerIdx >= 0)
-        {
-            printf("[items] Skull disabler idx %d received (AP item %d)\n", disablerIdx, itemID);
-            haloap::UnlockSkull(disablerIdx);
-            printf("[[items] UnlockSkull returned\n");
+        if (haloap::UnlockSkullItem(itemID))
             return;
-        }
         
         printf("[items] Unknown item recieved: %d\n", itemID);
     }
@@ -57,6 +49,13 @@ namespace haloap {
         }
     }
 
+    void ItemHandler::setMissionsRequired(int count)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (count >= 0 && count < MISSION_COUNT)
+            m_missionsRequired = count;
+    }
+
     void ItemHandler::setMissionCompletions(const bool completed[10]) {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (int i = 0; i < 10; i++)
@@ -69,14 +68,15 @@ namespace haloap {
         if (missionId < 0 || missionId >= 10)
             return true;
     
-        // Final Mission unlocked when all 9 others are completed
+        // Final Mission unlocked when enough of the others are completed
         if (missionId == m_finalMission) {
+            int completed = 0;
             for (int i = 0; i < 10; i++)
             {
                 if (i == m_finalMission) continue;
-                if (!m_missionCompleted[i]) return false;
+                if (m_missionCompleted[i]) completed++;
             }
-            return true;
+            return completed >= m_missionsRequired;
         }
     
         // All other missions: unlocked via AP items
@@ -100,12 +100,6 @@ namespace haloap {
         return (offset / 1000) - 1;
     }
     
-    int ItemHandler::translateItemToSkullDisabler(int itemID) const
-    {
-        int idx = itemID - CE_SKULL_OFFSET - 1;
-        if (idx <0 || idx >= SKULL_DISABLER_COUNT) return -1;
-        return idx;
-    }
     
     
 
