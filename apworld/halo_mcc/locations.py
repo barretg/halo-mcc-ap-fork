@@ -1,5 +1,7 @@
 from BaseClasses import ItemClassification, Location
 
+from .items import MCCItem
+
 from .data.halo_ce_location_data import CE_LOCATION_DATA
 from .data.levels import CHAPTER_DATA, LEVEL_DATA
 
@@ -17,6 +19,12 @@ def get_location_name_to_id():
     }
     return location_map
 
+def completion_event_location(level):
+    return f"{level} Completed"
+
+def completion_event_item(game):
+    return f"{game} Mission Completed"
+
 #create locations and place them in their region
 def create_locations(world):
     final_missions = set(world.final_missions.values())
@@ -25,6 +33,11 @@ def create_locations(world):
             region = world.get_region(level)
             location = MCCLocation(world.player, f"{level} Complete", data.offset, region)
             region.locations.append(location)
+            # Event twin of the completion, counted to open the game's final mission
+            event = MCCLocation(world.player, completion_event_location(level), None, region)
+            event.place_locked_item(MCCItem(completion_event_item(data.game), ItemClassification.progression,
+                                            None, world.player))
+            region.locations.append(event)
 
     if "ce" in world.enabled_games:
         for location, data in CE_LOCATION_DATA.items():
