@@ -97,6 +97,21 @@ Notes:
   repository, so a fresh clone cannot build as-is. The build scripts define
   `WSWRAP_NO_COMPRESSION` to work around it; the AP server then warns that the
   client does not support compressed websocket connections.
-* The scripts also define `WSWRAP_NO_SSL` (no OpenSSL import libraries), so a
-  build made this way supports `ws://` only. Type the `ws://` prefix explicitly
-  at the server prompt — without a scheme the launcher assumes `wss://`.
+* SSL (`wss://`, needed for archipelago.gg) is on when `OPENSSL_DIR` points at
+  OpenSSL headers and import libs for Windows x64. `build.sh` prepares those
+  from the OpenSSL source and the release's `libssl-3-x64.dll` /
+  `libcrypto-3-x64.dll`, which must ship next to the launcher. Without
+  `OPENSSL_DIR` the launcher is built `ws://` only; type the `ws://` prefix
+  explicitly at the server prompt, since without a scheme the launcher assumes
+  `wss://` for anything but localhost.
+
+## Release build
+
+`./build.sh` builds the DLL and the SSL launcher and writes the release to
+`build/release/` (untracked): `HaloAP-Windows.zip`, `HaloAP-Linux.zip` (the same
+files plus `halo-ap.sh`) and `halo_mcc.apworld`. `Bink2w64.dll` and the OpenSSL
+DLLs are taken prebuilt from `../release/HaloAP` (override with `PREBUILT=`).
+
+`linux/halo-ap.sh` is the player-facing wrapper for the steps above: it finds
+MCC, its Proton prefix and Proton through Steam's library folders, sets the
+environment, starts the launcher and then MCC in the same prefix.

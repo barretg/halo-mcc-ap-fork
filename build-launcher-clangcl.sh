@@ -26,10 +26,25 @@ APP_INC=(
 DEFS=(
   /DASIO_STANDALONE /DAP_NO_SCHEMA /D_WIN32_WINNT=0x0600
   /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DNDEBUG
-  /DWSWRAP_NO_SSL /DWSWRAP_NO_COMPRESSION              # no OpenSSL import libs available -> ws:// only
+  /DWSWRAP_NO_COMPRESSION
   /D_CRT_SECURE_NO_WARNINGS
 )
 LIBS=(ws2_32.lib crypt32.lib shell32.lib kernel32.lib user32.lib advapi32.lib ole32.lib oleaut32.lib)
+LIBPATHS=()
+
+# SSL (wss://) needs OpenSSL headers and import libs for Windows x64: set
+# OPENSSL_DIR to a dir with include/openssl/ and lib/{libssl,libcrypto}.lib
+# (build.sh prepares one). The exe then needs libssl-3-x64.dll and
+# libcrypto-3-x64.dll next to it. Without OPENSSL_DIR the build is ws:// only.
+if [[ -n "${OPENSSL_DIR:-}" ]]; then
+  APP_INC+=( "-I$OPENSSL_DIR/include" )
+  DEFS+=( /DOPENSSL_API_COMPAT=0x10100000L )
+  LIBS+=( libssl.lib libcrypto.lib )
+  LIBPATHS+=( "/libpath:$OPENSSL_DIR/lib" )
+else
+  DEFS+=( /DWSWRAP_NO_SSL )
+  echo "OPENSSL_DIR not set: building without SSL (ws:// only)"
+fi
 
 clang-cl --target=x86_64-pc-windows-msvc \
   /std:c++17 /EHsc "$CRT" /O2 /W0 /nologo -fuse-ld=lld \
@@ -42,5 +57,5 @@ clang-cl --target=x86_64-pc-windows-msvc \
     "/libpath:$X/crt/lib/x86_64" \
     "/libpath:$X/sdk/lib/ucrt/x86_64" \
     "/libpath:$X/sdk/lib/um/x86_64" \
-    "${LIBS[@]}"
+    "${LIBPATHS[@]}" "${LIBS[@]}"
 echo "built: $OUT/HaloAP_launcher.exe"
