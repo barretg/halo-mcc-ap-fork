@@ -65,6 +65,20 @@ if [ -z "${PROTON:-}" ]; then
 fi
 [ -x "${PROTON:-}" ] || die "Proton not found; set PROTON to its 'proton' script"
 
+# MCC is started outside Steam (see above), so it needs the Steam client already
+# running; without it MCC exits a few seconds after launch.
+pgrep -x steam >/dev/null || die "Steam is not running; start Steam first"
+pgrep -f 'MCC-Win64-Shipping\.exe' >/dev/null && die "MCC is already running; quit it first"
+
+# A previous run that didn't exit cleanly leaves the mod files installed. Put the
+# vanilla bink2w64.dll back first: the watcher below starts MCC when it sees the
+# mod files, so leftovers would start MCC before the launcher has connected.
+if [ -f "$BIN/bink2w64_original.dll" ]; then
+    echo "halo-ap: removing mod files left by a previous run"
+    rm -f "$BIN/bink2w64.dll" "$BIN/HaloAP.dll"
+    mv "$BIN/bink2w64_original.dll" "$BIN/bink2w64.dll" || die "could not restore $BIN/bink2w64.dll"
+fi
+
 # Windows (Z:) path of a Linux path
 winpath() { printf 'Z:%s' "$(printf '%s' "$1" | tr '/' '\\')"; }
 
