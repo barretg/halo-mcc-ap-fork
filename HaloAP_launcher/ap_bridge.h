@@ -56,6 +56,10 @@ namespace haloap {
         void OnItemsReceived(const std::list<APClient::NetworkItem>& items);
         void OnPrintJson(const APClient::PrintJSONArgs& args);
         void SendCompletionState();
+        void OnFinalMissionComplete(int code);
+        void CheckGoal();
+        std::string FinalsKey() const;
+        std::set<int> m_finalsDone;  // game codes whose final mission is done
         
         std::function<void(const std::string&)> m_sendToDll;
 

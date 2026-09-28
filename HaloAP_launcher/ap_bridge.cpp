@@ -132,6 +132,16 @@ namespace haloap {
         m_client->set_room_info_handler([this]() { OnRoomInfo(); });
         m_client->set_slot_connected_handler([this](const nlohmann::json& data) { OnSlotConnected(data); });
         m_client->set_slot_refused_handler([this](const std::list<std::string>& reasons) { OnSlotRefused(reasons); });
+        m_client->set_retrieved_handler([this](const std::map<std::string, nlohmann::json>& keys) {
+            auto it = keys.find(FinalsKey());
+            if (it == keys.end() || !it->second.is_array()) return;
+            {
+                std::lock_guard<std::mutex> lock(m_checkedMutex);
+                for (const auto& v : it->second)
+                    if (v.is_number_integer()) m_finalsDone.insert(v.get<int>());
+            }
+            std::cout << "[ap] " << it->second.dump() << " final missions done in earlier sessions\n";
+        });
         m_client->set_items_received_handler([this](const std::list<APClient::NetworkItem>& items) { OnItemsReceived(items); });
         m_client->set_print_json_handler([this](const APClient::PrintJSONArgs& args) { OnPrintJson(args); });
 
@@ -171,11 +181,8 @@ namespace haloap {
 
             SendLocation(locationId);
         
-            // The goal is every enabled game's final; only CE reports completions so far
-            if (MISSION_CODE_TO_INDEX[missionCode] == m_finalMission && m_finalByGame.size() <= 1)
-            {
-                m_client->StatusUpdate(APClient::ClientStatus::GOAL);
-            }
+            if (MISSION_CODE_TO_INDEX[missionCode] == m_finalMission)
+                OnFinalMissionComplete(1);
         
             return true;
         }
@@ -217,6 +224,68 @@ namespace haloap {
             return true;
         }
         
+        // H2 / H3 / H4 / Reach: "G_START:<game>:<map>", "G_CHAPTER:<game>:<map>:<key>",
+        // "G_COMPLETE:<game>:<map>"
+        const std::string gStart = "G_START:", gChapter = "G_CHAPTER:", gComplete = "G_COMPLETE:";
+        const bool isStart = message.rfind(gStart, 0) == 0;
+        const bool isChapter = message.rfind(gChapter, 0) == 0;
+        const bool isComplete = message.rfind(gComplete, 0) == 0;
+        if (isStart || isChapter || isComplete)
+        {
+            std::string rest = message.substr(message.find(':') + 1);
+            std::vector<std::string> parts;
+            for (size_t pos = 0;;) {
+                size_t colon = rest.find(':', pos);
+                parts.push_back(rest.substr(pos, colon == std::string::npos ? std::string::npos : colon - pos));
+                if (colon == std::string::npos) break;
+                pos = colon + 1;
+            }
+            if (parts.size() < (isChapter ? 3u : 2u)) {
+                std::cerr << "[ap] malformed: " << message << "\n";
+                return true;
+            }
+            int code = std::atoi(parts[0].c_str());
+            const GameMissionOrder* game = nullptr;
+            for (const auto& order : GetGameMissionOrders())
+                if (order.code == code) game = &order;
+            int index = -1;
+            if (game)
+                for (size_t i = 0; i < game->missions.size(); i++)
+                    if (_stricmp(game->missions[i].map, parts[1].c_str()) == 0) index = int(i);
+            if (index < 0) {
+                std::cerr << "[ap] unknown map for game " << code << ": " << parts[1] << "\n";
+                return true;
+            }
+            const MissionDef& mission = game->missions[index];
+
+            if (isStart) {
+                std::cout << "[ap] game " << code << " mission start: " << mission.name << "\n";
+                if (mission.startLocationId)
+                    SendLocation(mission.startLocationId);
+            }
+            else if (isChapter) {
+                uint32_t key = uint32_t(std::strtoul(parts[2].c_str(), nullptr, 10));
+                const ChapterKeyDef* chapter = nullptr;
+                for (const auto& c : mission.chapters)
+                    if (c.key == key) chapter = &c;
+                if (chapter) {
+                    std::cout << "[ap] Chapter: " << mission.name << " - " << chapter->name << "\n";
+                    SendLocation(chapter->locationId);
+                } else {
+                    std::cout << "[ap] " << mission.name << ": title " << key << " isn't a chapter\n";
+                }
+            }
+            else {
+                std::cout << "[ap] game " << code << " mission complete: " << mission.name << "\n";
+                auto final = m_finalByGame.find(code);
+                if (final != m_finalByGame.end() && final->second == index)
+                    OnFinalMissionComplete(code);
+                else
+                    SendLocation(int64_t(code) * 100000 + int64_t(index + 1) * 1000);
+            }
+            return true;
+        }
+
         const std::string locationPrefix = "LOCATION_CHECKED: ";
         if (message.rfind(locationPrefix, 0) == 0)
         {
@@ -228,6 +297,42 @@ namespace haloap {
         
         
         return false;
+    }
+
+    std::string APBridge::FinalsKey() const {
+        return "halo_mcc_finals_" + std::to_string(m_client->get_team_number()) + "_" +
+               std::to_string(m_client->get_player_number());
+    }
+
+    // The goal is the final mission of every enabled game. Which finals are done is kept
+    // in the server's data storage so it survives reconnects.
+    void APBridge::OnFinalMissionComplete(int code) {
+        std::cout << "[ap] final mission of game " << code << " complete\n";
+        {
+            std::lock_guard<std::mutex> lock(m_checkedMutex);
+            m_finalsDone.insert(code);
+        }
+        if (m_client && m_slotConnected.load())
+            m_client->Set(FinalsKey(), nlohmann::json::array(), false,
+                          { { "update", nlohmann::json::array({ code }) } });
+        CheckGoal();
+    }
+
+    void APBridge::CheckGoal() {
+        if (!m_client || !m_slotConnected.load()) return;
+        std::lock_guard<std::mutex> lock(m_checkedMutex);
+        // Pre-1.3 slot data: CE only
+        std::set<int> needed;
+        for (const auto& [code, idx] : m_finalByGame) needed.insert(code);
+        if (needed.empty()) needed.insert(1);
+        for (int code : needed)
+            if (!m_finalsDone.count(code)) {
+                std::cout << "[ap] goal: " << m_finalsDone.size() << "/" << needed.size()
+                          << " final missions done\n";
+                return;
+            }
+        std::cout << "[ap] *** all final missions complete: goal ***\n";
+        m_client->StatusUpdate(APClient::ClientStatus::GOAL);
     }
 
     void APBridge::SendLocation(int64_t locationId) {
@@ -313,8 +418,11 @@ namespace haloap {
             if (slotData.contains("final_missions") && slotData["final_missions"].contains(order.key))
             {
                 std::string name = slotData["final_missions"][order.key].get<std::string>();
+                // Non-CE levels are "<Game>: <Mission>"
+                size_t colon = name.find(": ");
+                std::string bare = (order.code != 1 && colon != std::string::npos) ? name.substr(colon + 2) : name;
                 for (size_t i = 0; i < order.missions.size(); i++)
-                    if (order.missions[i] == name) m_finalByGame[order.code] = int(i);
+                    if (order.missions[i].name == bare) m_finalByGame[order.code] = int(i);
                 if (!m_finalByGame.count(order.code))
                     std::cerr << "[ap] unknown final mission '" << name << "' for " << order.key << "\n";
             }
@@ -328,6 +436,9 @@ namespace haloap {
         }
         
         
+        // Finals already done in earlier sessions
+        m_client->Get({ FinalsKey() });
+
         SendCompletionState();
     }
 

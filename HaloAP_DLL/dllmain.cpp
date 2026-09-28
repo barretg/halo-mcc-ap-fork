@@ -9,6 +9,7 @@
 #include "pipe_client.h"
 #include "shared/common.h"
 #include "minhook/MinHook.h"
+#include "hooks/game_hooks.h"
 #include "hooks/mission_complete.h"
 #include "hooks/mission_id_lookup.h"
 #include "hooks/mission_load.h"
@@ -525,6 +526,7 @@ namespace
             //	g_pipe->Send(msg);
             //}
 
+            haloap::UpdateGameHooks(g_pipe);
             haloap::ApplyForcedSkulls();
 
             tick++;

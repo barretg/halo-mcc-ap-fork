@@ -61,3 +61,15 @@ CHAPTER_DATA: Dict[str, tuple[str, int]] = {
     for _number, _mission in enumerate(_missions, start=1)
     for _n, _chapter in enumerate(_mission.chapters, start=1)
 }
+
+# Halo 4 mission starts: several H4 missions show no chapter card when they begin (Dawn
+# has none at all), so each playable H4 mission gets a check for loading into it. It
+# uses chapter slot 0 (the mission's offset + CHAPTER_OFFSET).
+MISSION_START_GAMES = ("h4",)
+for _game in MISSION_START_GAMES:
+    for _number, _mission in enumerate(MISSIONS[_game], start=1):
+        if not _mission.cinematic:
+            CHAPTER_DATA[f"{level_name(_game, _mission)} - Mission Start"] = (
+                level_name(_game, _mission),
+                mission_offset(_game, _number) + constants.CHAPTER_OFFSET,
+            )

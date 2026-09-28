@@ -1,0 +1,52 @@
+{
+ "m10": {
+  "chapter_01": 56672,
+  "chapter_02": 56673,
+  "chapter_03": 56674
+ },
+ "m20": {
+  "ct_courtyard": 3440,
+  "ct_return": 39337,
+  "ct_sword": 3442,
+  "ct_valley": 3441
+ },
+ "m30": {
+  "ct_quiet": 3644,
+  "ct_mule": 3645,
+  "ct_settlement": 3646
+ },
+ "m35": {
+  "chapter_01": 42795,
+  "chapter_02": 42796,
+  "chapter_03": 42797
+ },
+ "m45": {
+  "ct_beach": 3991,
+  "ct_wafer": 3992,
+  "ct_corvette": 3993,
+  "ct_corvette_alt": 3994
+ },
+ "m50": {
+  "ct_act1": 3806,
+  "ct_act2": 3807,
+  "ct_act3": 3808
+ },
+ "m52": {
+  "ct_start": 3287,
+  "ct_final": 3288
+ },
+ "m60": {
+  "ct_start": 3002,
+  "ct_courtyard": 3003,
+  "ct_ice_cave": 3004
+ },
+ "m70": {
+  "ct_blockade": 3593,
+  "ct_dirtroad": 3592,
+  "ct_platform": 3595,
+  "ct_wall": 3594
+ },
+ "m70_bonus": {
+  "ct_hill": 25307
+ }
+}
