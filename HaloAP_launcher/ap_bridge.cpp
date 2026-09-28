@@ -1,6 +1,7 @@
 #include "ap_bridge.h"
 #include "Data/mission_map.h"
 #include "Data/chapter_map.h"
+#include "Data/mission_order.h"
 #include "shared/common.h"
 #include <iostream>
 #include <vector>
@@ -48,26 +49,37 @@ namespace haloap {
     void APBridge::SendCompletionState() {
         if (!m_sendToDll) return;
         std::lock_guard<std::mutex> lock(m_checkedMutex);
-    
-        std::string msg = "COMPLETED:";
-        bool first = true;
-        for (int i = 0; i < 10; i++) {
-            if (m_checkedLocations.count(COMPLETION_LOCATIONS[i])) {
-                if (!first) msg += ",";
-                msg += std::to_string(i);
-                first = false;
-            }
-        }
-        m_sendToDll(msg);
-        std::cout << "[ap] Sent completion state: " << msg << "\n";
-        
-        m_sendToDll("FINAL_MISSION:" + std::to_string(m_finalMission));
-        std::cout << "[ap] Sent final mission: " << m_finalMission << "\n";
 
-        if (m_ceMissionsRequired >= 0)
-        {
-            m_sendToDll("MISSIONS_REQUIRED:" + std::to_string(m_ceMissionsRequired));
-            std::cout << "[ap] Sent CE missions required: " << m_ceMissionsRequired << "\n";
+        // Pre-1.3 slot data has no per-game finals: CE only, as before
+        std::map<int, int> finals = m_finalByGame;
+        if (finals.empty())
+            finals[1] = m_finalMission;
+
+        for (const auto& [code, finalIdx] : finals) {
+            size_t count = 10;
+            for (const auto& order : GetGameMissionOrders())
+                if (order.code == code) count = order.missions.size();
+
+            std::string msg = "COMPLETED:" + std::to_string(code) + ":";
+            bool first = true;
+            for (size_t i = 0; i < count; i++) {
+                if (m_checkedLocations.count(int64_t(code) * 100000 + int64_t(i + 1) * 1000)) {
+                    if (!first) msg += ",";
+                    msg += std::to_string(i);
+                    first = false;
+                }
+            }
+            m_sendToDll(msg);
+            std::cout << "[ap] Sent completion state: " << msg << "\n";
+
+            m_sendToDll("FINAL_MISSION:" + std::to_string(code) + ":" + std::to_string(finalIdx));
+            std::cout << "[ap] Sent game " << code << " final mission: " << finalIdx << "\n";
+
+            // Without a count in slot data (pre-1.3), the final needs all the others
+            auto req = m_requiredByGame.find(code);
+            int required = req != m_requiredByGame.end() ? req->second : int(count) - 1;
+            m_sendToDll("MISSIONS_REQUIRED:" + std::to_string(code) + ":" + std::to_string(required));
+            std::cout << "[ap] Sent game " << code << " missions required: " << required << "\n";
         }
     }
 
@@ -159,7 +171,8 @@ namespace haloap {
 
             SendLocation(locationId);
         
-            if (MISSION_CODE_TO_INDEX[missionCode] == m_finalMission)
+            // The goal is every enabled game's final; only CE reports completions so far
+            if (MISSION_CODE_TO_INDEX[missionCode] == m_finalMission && m_finalByGame.size() <= 1)
             {
                 m_client->StatusUpdate(APClient::ClientStatus::GOAL);
             }
@@ -292,9 +305,21 @@ namespace haloap {
                 m_finalMission = it->second;
         }
 
-        if (slotData.contains("missions_required") && slotData["missions_required"].contains("ce"))
+        // 1.3+: per-game finals and required counts, keyed by apworld game key
+        m_finalByGame.clear();
+        m_requiredByGame.clear();
+        for (const auto& order : GetGameMissionOrders())
         {
-            m_ceMissionsRequired = slotData["missions_required"]["ce"].get<int>();
+            if (slotData.contains("final_missions") && slotData["final_missions"].contains(order.key))
+            {
+                std::string name = slotData["final_missions"][order.key].get<std::string>();
+                for (size_t i = 0; i < order.missions.size(); i++)
+                    if (order.missions[i] == name) m_finalByGame[order.code] = int(i);
+                if (!m_finalByGame.count(order.code))
+                    std::cerr << "[ap] unknown final mission '" << name << "' for " << order.key << "\n";
+            }
+            if (slotData.contains("missions_required") && slotData["missions_required"].contains(order.key))
+                m_requiredByGame[order.code] = slotData["missions_required"][order.key].get<int>();
         }
         
         if (slotData.contains("skullsanity"))

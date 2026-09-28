@@ -27,6 +27,9 @@ namespace haloap {
     // 3 Halo 3, 4 Halo 4, 5 ODST, 6 Reach). Forced and unlocked skulls follow it.
     void SetLobbyGame(int game);
 
+    // The game whose lobby is open (1 CE until a game title is clicked)
+    int GetLobbyGame();
+
     // Track whether the player is currently inside a mission. ApplyForcedSkulls
     // only runs when NOT in a mission (bitmask pointer chain is lobby-only).
     void SetInMission(bool inMission);

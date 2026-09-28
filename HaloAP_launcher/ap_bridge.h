@@ -5,6 +5,7 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <map>
 #include <set>
 #include <cstdint>
 
@@ -66,7 +67,9 @@ namespace haloap {
         std::mutex m_itemBufferMutex;
         std::vector<int64_t> m_itemBuffer;
         int m_skullsanityTier{ -1 };
-        int m_ceMissionsRequired{ -1 }; // -1: not in slot data, final needs all 9
+        // By game code; empty for pre-1.3 slot data (CE only, final needs all others)
+        std::map<int, int> m_finalByGame;
+        std::map<int, int> m_requiredByGame;
 
         std::atomic<bool> m_socketConnected{ false };
         std::atomic<bool> m_slotConnected{ false };

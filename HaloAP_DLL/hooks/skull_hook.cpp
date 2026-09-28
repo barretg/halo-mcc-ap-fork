@@ -523,6 +523,12 @@ namespace haloap
         g_lobbyGame = game;
     }
 
+    int GetLobbyGame()
+    {
+        std::lock_guard<std::mutex> lock(g_skullMutex);
+        return g_lobbyGame;
+    }
+
     void ApplyForcedSkulls()
     {
         uint64_t forcedOn, forcedOff, applicable;

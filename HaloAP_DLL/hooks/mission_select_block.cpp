@@ -93,6 +93,7 @@ namespace haloap
         // =================================================================
         std::atomic<bool> g_populatingMissions{false};
         std::atomic<int> g_missionCounter{0};
+        std::atomic<int> g_populatingGame{1};  // lobby game whose mission list is being built
         std::atomic<bool> g_nextItemLocked{false};
         std::atomic<uint32_t> g_collapseGeneration{0};
         PipeClient* g_pipe = nullptr;
@@ -548,9 +549,9 @@ namespace haloap
                     int currentItem = g_missionCounter.fetch_add(1);
                     int missionId = currentItem / 2;
                     bool isVisualItem = (currentItem % 2 == 1);
-                    if (isVisualItem && !GetItemHandler().isMissionAllowed(missionId))
+                    if (isVisualItem && !GetItemHandler().isMissionAllowed(g_populatingGame.load(), missionId))
                     {
-                        printf("[hook] Mission %d locked, will skip\n", missionId);
+                        printf("[hook] Game %d mission %d locked, will skip\n", g_populatingGame.load(), missionId);
                         g_nextItemLocked.store(true);
                     }
                     else
@@ -603,6 +604,7 @@ namespace haloap
 
     g_missionCounter.store(0);
     g_nextItemLocked.store(false);
+    g_populatingGame.store(GetLobbyGame());
     g_populatingMissions.store(mayBeMissions);
 
     if (g_chapterTabOriginal)
@@ -612,6 +614,8 @@ namespace haloap
     g_nextItemLocked.store(false);
 
     int totalAllocs = g_missionCounter.load();
+    if (mayBeMissions && totalAllocs > 8)
+        printf("[hook] Game %d lists %d missions\n", g_populatingGame.load(), totalAllocs / 2);
 
     // Difficulty has ≤ 8 allocs (4 items), missions have 20 (10 items)
     // If we filtered but it wasn't actually missions, re-run unfiltered

@@ -236,42 +236,54 @@ void PipeClient::HandleMessage(const std::string& message)
         return;
     }
 
+    // COMPLETED / FINAL_MISSION / MISSIONS_REQUIRED carry "<game>:<value>"; a value
+    // without a game prefix is CE (game 1)
+    auto splitGame = [](const std::string& rest, int& game) -> std::string {
+        size_t colon = rest.find(':');
+        if (colon == std::string::npos) { game = 1; return rest; }
+        game = std::atoi(rest.substr(0, colon).c_str());
+        return rest.substr(colon + 1);
+    };
+
     if (message.rfind(completedPrefix, 0) == 0)
     {
-        bool completed[9] = {};
-        std::string data = message.substr(completedPrefix.size());
-        if (!data.empty())
-        {
-            size_t pos = 0;
-            while (pos < data.size())
-            {
-                size_t comma = data.find(',', pos);
-                if (comma == std::string::npos) comma = data.size();
-                int idx = std::atoi(data.substr(pos, comma - pos).c_str());
-                if (idx >= 0 && idx < 10) completed[idx] = true;
-                pos = comma + 1;
-            }
-        }
-        haloap::GetItemHandler().setMissionCompletions(completed);
+        int game;
+        std::string data = splitGame(message.substr(completedPrefix.size()), game);
+        bool completed[haloap::kMaxMissions] = {};
         int count = 0;
-        for (int i = 0; i < 10; i++) if (completed[i]) count++;
-        printf("[pipe] Mission completions updated: %d/9\n", count);
+        size_t pos = 0;
+        while (pos < data.size())
+        {
+            size_t comma = data.find(',', pos);
+            if (comma == std::string::npos) comma = data.size();
+            int idx = std::atoi(data.substr(pos, comma - pos).c_str());
+            if (idx >= 0 && idx < haloap::kMaxMissions && !completed[idx])
+            {
+                completed[idx] = true;
+                count++;
+            }
+            pos = comma + 1;
+        }
+        haloap::GetItemHandler().setMissionCompletions(game, completed);
+        printf("[pipe] Game %d mission completions updated: %d\n", game, count);
         return;
     }
 
     if (message.rfind(finalMissionPrefix, 0) == 0)
     {
-        int idx = std::atoi(message.c_str() + finalMissionPrefix.size());
-        haloap::GetItemHandler().setFinalMission(idx);
-        printf("[pipe] Final Mission set to index %d\n", idx);
+        int game;
+        int idx = std::atoi(splitGame(message.substr(finalMissionPrefix.size()), game).c_str());
+        haloap::GetItemHandler().setFinalMission(game, idx);
+        printf("[pipe] Game %d final mission set to index %d\n", game, idx);
         return;
     }
 
     if (message.rfind(missionsRequiredPrefix, 0) == 0)
     {
-        int count = std::atoi(message.c_str() + missionsRequiredPrefix.size());
-        haloap::GetItemHandler().setMissionsRequired(count);
-        printf("[pipe] Missions required for final: %d\n", count);
+        int game;
+        int count = std::atoi(splitGame(message.substr(missionsRequiredPrefix.size()), game).c_str());
+        haloap::GetItemHandler().setMissionsRequired(game, count);
+        printf("[pipe] Game %d missions required for final: %d\n", game, count);
         return;
     }
 
