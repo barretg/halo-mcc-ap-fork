@@ -94,6 +94,23 @@ namespace haloap
         std::atomic<bool> g_populatingMissions{false};
         std::atomic<int> g_missionCounter{0};
         std::atomic<int> g_populatingGame{1};  // lobby game whose mission list is being built
+
+        // Rally points (H3 onwards): built by the same list setup as the mission list,
+        // on the same screen, but its items are allocated as "populateTrallyPoint"
+        // rather than "handleArrayMessage". Only Rally Point Alpha (the mission start,
+        // always the first item) is kept, so a mission can't be started partway through.
+        // One setup call adds the same item objects twice (Alpha, Bravo, ..., Alpha,
+        // Bravo, ...), so it's matched by item, not by position.
+        std::atomic<bool> g_rallyList{false};
+        std::atomic<int> g_rallyAdds{0};
+        std::atomic<void*> g_rallyFirstItem{nullptr};
+
+        // What each list setup call builds, logged once per call
+        std::atomic<bool> g_inSetup{false};
+        std::atomic<int> g_setupAdds{0};
+        std::atomic<int> g_setupAllocs{0};
+        std::mutex g_setupTypesMutex;
+        std::string g_setupTypes;
         std::atomic<bool> g_nextItemLocked{false};
         std::atomic<uint32_t> g_collapseGeneration{0};
         PipeClient* g_pipe = nullptr;
@@ -517,6 +534,22 @@ namespace haloap
                     g_skullWidgets[g_skullWidgetCount++] = item;
             }
 
+            if (g_inSetup.load())
+            {
+                g_setupAdds.fetch_add(1);
+                if (g_rallyList.load())
+                {
+                    g_rallyAdds.fetch_add(1);
+                    void* expected = nullptr;
+                    g_rallyFirstItem.compare_exchange_strong(expected, item);
+                }
+                if (g_rallyList.load() && item != g_rallyFirstItem.load())
+                {
+                    printf("[hook] Skipping rally point item\n");
+                    return;
+                }
+            }
+
             if (g_populatingMissions.load() && g_nextItemLocked.load())
             {
                 printf("[hook] Skipping locked mission item\n");
@@ -535,6 +568,16 @@ namespace haloap
         void* DetourAllocItem(void* pool, uint32_t size, const char* type, int flags)
         {
             
+            if (g_inSetup.load() && type != nullptr)
+            {
+                g_setupAllocs.fetch_add(1);
+                if (strcmp(type, "populateTrallyPoint") == 0)
+                    g_rallyList.store(true);
+                std::lock_guard<std::mutex> lock(g_setupTypesMutex);
+                if (g_setupTypes.size() < 400 && g_setupTypes.find(type) == std::string::npos)
+                    (g_setupTypes += type) += ' ';
+            }
+
             // Count items for screen identification
             if (g_countingItems.load() && type != nullptr)
             {
@@ -602,6 +645,14 @@ namespace haloap
 
     bool mayBeMissions = (screenId > 18);
 
+    g_setupAdds.store(0);
+    g_setupAllocs.store(0);
+    g_rallyList.store(false);
+    g_rallyAdds.store(0);
+    g_rallyFirstItem.store(nullptr);
+    { std::lock_guard<std::mutex> lock(g_setupTypesMutex); g_setupTypes.clear(); }
+    g_inSetup.store(true);
+
     g_missionCounter.store(0);
     g_nextItemLocked.store(false);
     g_populatingGame.store(GetLobbyGame());
@@ -638,6 +689,16 @@ namespace haloap
             __try { g_skullWidgetVtable = *(void**)g_skullWidgets[0]; }
             __except (1) {}
         }
+    }
+
+    g_inSetup.store(false);
+    if (g_rallyList.load())
+        printf("[hook] Rally point list: kept only %p of %d adds\n", g_rallyFirstItem.load(), g_rallyAdds.load());
+    {
+        std::lock_guard<std::mutex> lock(g_setupTypesMutex);
+        printf("[menu] list setup: screen=%d game=%d controller=%p adds=%d allocs=%d types=[%s]\n",
+               screenId, GetLobbyGame(), controller, g_setupAdds.load(), g_setupAllocs.load(),
+               g_setupTypes.c_str());
     }
 
     printf("[hook] Chapter tab setup complete, %d allocs\n", totalAllocs);

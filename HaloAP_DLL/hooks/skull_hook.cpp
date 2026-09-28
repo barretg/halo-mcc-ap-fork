@@ -529,6 +529,33 @@ namespace haloap
         return g_lobbyGame;
     }
 
+    // Game-agnostic mission check. MCC loads every game's DLL at the menu and unloads
+    // all but the one being played when a mission starts, so fewer game DLLs than the
+    // most seen at the menu means a mission is loading or running. g_inMission only
+    // tracks CE missions (its hooks live in halo1.dll).
+    static bool GameDllsSayInMission()
+    {
+        static const char* const kGameDlls[] = {
+            "halo1.dll", "halo2.dll", "halo3.dll", "halo3odst.dll", "halo4.dll", "haloreach.dll",
+        };
+        static int s_maxLoaded = 0;
+        static bool s_lastInMission = false;
+
+        int loaded = 0;
+        for (const char* name : kGameDlls)
+            if (GetModuleHandleA(name)) loaded++;
+        if (loaded > s_maxLoaded) s_maxLoaded = loaded;
+
+        bool inMission = loaded < s_maxLoaded;
+        if (inMission != s_lastInMission)
+        {
+            printf("[skull] game DLLs loaded %d/%d: %s\n", loaded, s_maxLoaded,
+                   inMission ? "in mission, not touching skulls" : "at menu");
+            s_lastInMission = inMission;
+        }
+        return inMission;
+    }
+
     void ApplyForcedSkulls()
     {
         uint64_t forcedOn, forcedOff, applicable;
@@ -545,6 +572,7 @@ namespace haloap
         if (applicable == 0) return;
 
         if (g_inMission.load()) return;
+        if (GameDllsSayInMission()) return;
 
         uint64_t* bitmask = ResolveSkullBitmask();
         if (!bitmask) return;
