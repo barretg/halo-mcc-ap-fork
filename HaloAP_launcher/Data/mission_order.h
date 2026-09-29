@@ -33,7 +33,7 @@ namespace haloap {
         static const std::vector<GameMissionOrder> orders = {
             {"ce", 1, {
                 {"The Pillar of Autumn", "a10", 0, {}, {}},
-                {"Halo (CE)", "a30", 0, {}, {}},
+                {"Halo", "a30", 0, {}, {}},
                 {"The Truth and Reconciliation", "a50", 0, {}, {}},
                 {"The Silent Cartographer", "b30", 0, {}, {}},
                 {"Assault on the Control Room", "b40", 0, {}, {}},

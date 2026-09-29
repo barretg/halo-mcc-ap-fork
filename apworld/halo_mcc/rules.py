@@ -16,7 +16,11 @@ def set_rules(world):
         # (the client counts completions, not access items). Each completion drops an event
         # item; AtLeast would do this directly but needs a newer Archipelago.
         entrance = world.multiworld.get_entrance(f"Menu -> {final}", world.player)
-        world.set_rule(entrance, Has(completion_event_item(game), count = world.missions_required[game]))
+        if world.legacy_121:
+            # 1.2.1 seeds (rebuilt by Universal Tracker) open it with every other Access item
+            world.set_rule(entrance, HasAll(*[f"{level} Access" for level in others]))
+        else:
+            world.set_rule(entrance, Has(completion_event_item(game), count = world.missions_required[game]))
 
         if world.options.skullsanity.value == SkullSanity.option_all:
             skulls = world.game_skulls[game]

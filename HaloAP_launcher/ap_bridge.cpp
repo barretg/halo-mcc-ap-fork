@@ -19,7 +19,7 @@ namespace haloap {
     
     std::unordered_map<std::string, int> MISSION_NAME_TO_INDEX = {
     {"The Pillar of Autumn", 0},
-    {"Halo (CE)", 1},
+    {"Halo", 1},
     {"The Truth and Reconciliation", 2},
     {"The Silent Cartographer", 3},
     {"Assault on the Control Room", 4},
@@ -30,6 +30,15 @@ namespace haloap {
     {"The Maw", 9},
     };  
     int m_finalMission = 9;
+
+    // Level names are "<Game>: <Mission>" (CE's too since 1.4). Returns the bare mission
+    // name, also mapping pre-1.4 CE names ("Halo (CE)", no prefix) to the current ones.
+    std::string BareMissionName(const std::string& name)
+    {
+        size_t colon = name.find(": ");
+        std::string bare = colon != std::string::npos ? name.substr(colon + 2) : name;
+        return bare == "Halo (CE)" ? "Halo" : bare;
+    }
     
     std::unordered_map<std::string, int> MISSION_CODE_TO_INDEX = {
     {"a10", 0},
@@ -422,7 +431,7 @@ namespace haloap {
         if (slotData.contains("final_mission"))
         {
             // "" when CE isn't in the world
-            auto it = MISSION_NAME_TO_INDEX.find(slotData.at("final_mission").get<std::string>());
+            auto it = MISSION_NAME_TO_INDEX.find(BareMissionName(slotData.at("final_mission").get<std::string>()));
             if (it != MISSION_NAME_TO_INDEX.end())
                 m_finalMission = it->second;
         }
@@ -435,9 +444,7 @@ namespace haloap {
             if (slotData.contains("final_missions") && slotData["final_missions"].contains(order.key))
             {
                 std::string name = slotData["final_missions"][order.key].get<std::string>();
-                // Non-CE levels are "<Game>: <Mission>"
-                size_t colon = name.find(": ");
-                std::string bare = (order.code != 1 && colon != std::string::npos) ? name.substr(colon + 2) : name;
+                std::string bare = BareMissionName(name);
                 for (size_t i = 0; i < order.missions.size(); i++)
                     if (order.missions[i].name == bare) m_finalByGame[order.code] = int(i);
                 if (!m_finalByGame.count(order.code))

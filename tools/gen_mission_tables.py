@@ -23,7 +23,7 @@ SKULL_LOCATION_OFFSET = 20
 # Games with a location for loading into each playable mission (levels.py MISSION_START_GAMES)
 MISSION_START_GAMES = {"h4"}
 
-CE = [("The Pillar of Autumn", "a10"), ("Halo (CE)", "a30"), ("The Truth and Reconciliation", "a50"),
+CE = [("The Pillar of Autumn", "a10"), ("Halo", "a30"), ("The Truth and Reconciliation", "a50"),
       ("The Silent Cartographer", "b30"), ("Assault on the Control Room", "b40"),
       ("343 Guilty Spark", "c10"), ("The Library", "c20"), ("Two Betrayals", "c40"),
       ("Keyes", "d20"), ("The Maw", "d40")]

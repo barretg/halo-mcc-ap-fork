@@ -25,9 +25,10 @@ namespace haloap {
         //
         // After a win, MCC would load the next mission, which may be locked. Instead the game
         // goes back to the menu, like quitting from the pause menu:
-        //   H2, H3:    the next shell command MCC sends the engine (slot 3) is replaced with
-        //              pause, teardown, resume, which is what the pause menu's quit sends. The
-        //              same quit is used when a locked mission starts anyway.
+        //   H2, H3:    the DLL sends the engine (slot 3) pause, teardown, resume, which is what
+        //              the pause menu's quit sends. Slot 3 only queues the message for the
+        //              engine thread, so it's sent right after the win (on the game thread) or
+        //              from the tick. The same quit is used when a locked mission starts anyway.
         //   H4, Reach: the win sets a "game won" byte in the game globals before ending the
         //              game; MCC loads the next mission only if it's set, so it's cleared
         //              after the win function returns.
@@ -232,6 +233,34 @@ namespace haloap {
             if (original) original(index, duration);
         }
 
+        bool InModule(HMODULE module, const void* p);
+
+        // Sends the pause menu's quit to the engine now. False if the engine or its shell
+        // command function isn't known yet.
+        bool SendQuit(int gi)
+        {
+            GameState& st = g_state[gi];
+            if (!st.engineGlobal) return false;
+            __try
+            {
+                void* engine = *st.engineGlobal;
+                if (!engine) return false;
+                // Through the hook's trampoline once it's in, else straight to slot 3
+                auto shell = (ShellCommandFn)st.shellOriginal;
+                if (!shell)
+                {
+                    shell = (ShellCommandFn)(*(void***)engine)[3];
+                    if (!InModule(st.module, (void*)shell)) return false;
+                }
+                shell(engine, 0x0, nullptr);  // pause
+                shell(engine, 0xD, nullptr);  // teardown
+                shell(engine, 0x1, nullptr);  // resume
+            }
+            __except (1) { return false; }
+            printf("[game] %s: quit to the menu sent\n", kGames[gi].dll);
+            return true;
+        }
+
         template <int GI>
         uint64_t DetourWon(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
         {
@@ -240,8 +269,8 @@ namespace haloap {
             uint64_t result = original ? original(a, b, c, d) : 0;
             if (kGames[GI].postWin == PostWin::ClearWonFlag)
                 ClearWonFlag(GI);
-            else
-                g_state[GI].quitPending.store(true);
+            else if (!SendQuit(GI))
+                g_state[GI].quitPending.store(true);  // sent on the next tick or shell command
             return result;
         }
 
@@ -582,7 +611,11 @@ namespace haloap {
 
         for (int gi = 0; gi < kGameCount; gi++)
             if (g_state[gi].module && kGames[gi].postWin == PostWin::ShellQuit)
+            {
                 TryHookShell(gi);
+                if (g_state[gi].quitPending.load() && SendQuit(gi))
+                    g_state[gi].quitPending.store(false);
+            }
 
         // In a mission only the game being played stays loaded (at the menu they all are).
         // Report its mission start once the map name is there.
@@ -609,7 +642,8 @@ namespace haloap {
                     !GetItemHandler().isMissionAllowed(kGames[gi].code, i))
                 {
                     printf("[game] %s: %s is locked, quitting to the menu\n", kGames[gi].dll, map);
-                    st.quitPending.store(true);
+                    if (!SendQuit(gi))
+                        st.quitPending.store(true);
                 }
         }
     }

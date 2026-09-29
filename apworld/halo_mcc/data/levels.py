@@ -14,35 +14,55 @@ class LevelData:
 # the base level offset is used for the level completion location and the location access item
 
 LEVEL_DATA: Dict[str, LevelData] = {
-    "The Pillar of Autumn": LevelData(
+    "Halo CE: The Pillar of Autumn": LevelData(
         game="ce", offset=constants.PILLER_OF_AUTUMN_OFFSET
     ),
-    "Halo (CE)": LevelData(game="ce", offset=constants.HALO_CE_MISSION_OFFSET),
-    "The Truth and Reconciliation": LevelData(
+    "Halo CE: Halo": LevelData(game="ce", offset=constants.HALO_CE_MISSION_OFFSET),
+    "Halo CE: The Truth and Reconciliation": LevelData(
         game="ce", offset=constants.TRUTH_AND_RECONCILIATION_OFFSET
     ),
-    "The Silent Cartographer": LevelData(
+    "Halo CE: The Silent Cartographer": LevelData(
         game="ce", offset=constants.SILENT_CARTOGRAPHER_OFFSET
     ),
-    "Assault on the Control Room": LevelData(
+    "Halo CE: Assault on the Control Room": LevelData(
         game="ce", offset=constants.ASSAULT_CONTROL_ROOM_OFFSET
     ),
-    "343 Guilty Spark": LevelData(
+    "Halo CE: 343 Guilty Spark": LevelData(
         game="ce", offset=constants.GUILTY_SPARK_OFFSET
     ),
-    "The Library": LevelData(
+    "Halo CE: The Library": LevelData(
         game="ce", offset=constants.LIBRARY_OFFSET
     ),
-    "Two Betrayals": LevelData(
+    "Halo CE: Two Betrayals": LevelData(
         game="ce", offset=constants.TWO_BETRAYALS_OFFSET
     ),
-    "Keyes": LevelData(
+    "Halo CE: Keyes": LevelData(
         game="ce", offset=constants.KEYS_OFFSET
     ),
-    "The Maw": LevelData(
+    "Halo CE: The Maw": LevelData(
         game="ce", offset=constants.MAW_OFFSET
     ),
 }
+
+# Before 1.4 CE's missions had no "Halo CE: " prefix and Halo was "Halo (CE)". Old names
+# (from older YAMLs, commands and seeds) map to the current ones, as do the items and
+# locations named after them (LEGACY_ITEM_NAMES, locations.get_legacy_location_names).
+LEGACY_CE_LEVEL_NAMES: Dict[str, str] = {
+    ("Halo (CE)" if _level == "Halo CE: Halo" else _level.removeprefix("Halo CE: ")): _level
+    for _level, _data in LEVEL_DATA.items() if _data.game == "ce"
+}
+LEGACY_ITEM_NAMES: Dict[str, str] = {f"{old} Access": f"{new} Access" for old, new in LEGACY_CE_LEVEL_NAMES.items()}
+CURRENT_TO_LEGACY_CE_LEVEL: Dict[str, str] = {new: old for old, new in LEGACY_CE_LEVEL_NAMES.items()}
+
+
+def current_level_name(name: str) -> str:
+    """Current level name for a current or pre-1.4 one."""
+    return LEGACY_CE_LEVEL_NAMES.get(name, name)
+
+
+def current_item_name(name: str) -> str:
+    """Current item name for a current or pre-1.4 one."""
+    return LEGACY_ITEM_NAMES.get(name, name)
 
 for _game, _missions in MISSIONS.items():
     for _number, _mission in enumerate(_missions, start=1):

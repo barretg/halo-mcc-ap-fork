@@ -90,6 +90,10 @@ echo "Logs:    $LOG_DIR"
 export STEAM_COMPAT_DATA_PATH="$PREFIX"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_DIR"
 export HALOAP_NO_LAUNCH=1
+# Proton only adds its DXVK / VKD3D-Proton overrides while setting up the prefix, which
+# runinprefix skips. Without them Wine's own d3d11/dxgi load (WineD3D), which Halo 4
+# crashes in.
+export WINEDLLOVERRIDES="d3d11=n;d3d10core=n;d3d9=n;dxgi=n;d3d12=n;d3d12core=n${WINEDLLOVERRIDES:+;$WINEDLLOVERRIDES}"
 # Also keeps the DLL from opening a console, which destabilises MCC under Proton
 export HALOAP_LOG="$(winpath "$LOG_DIR/haloap-dll.log")"
 

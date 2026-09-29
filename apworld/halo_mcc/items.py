@@ -1,6 +1,6 @@
 from BaseClasses import Item, ItemClassification
 from .data.constants import *
-from .data.levels import LEVEL_DATA, LevelData
+from .data.levels import LEVEL_DATA, LevelData, current_item_name
 from .data.skulls import (GAME_INFO, GAME_SKULLS, NON_SCORING_SKULLS, SHARED_SKULL_GAME_CODE,
                           SKULLS, SKULLS_BY_NAME)
 from .mcc_options import SkullItemMode, SkullSanity
@@ -33,6 +33,24 @@ def skull_items_for_game(world, game: str, scoring: bool) -> list[str]:
     return [skull_item_name(skull, None if shared else game) for skull in skulls]
 
 
+# 1.2.1's CE skull items: SKULL_OFFSET + position in this list + 1, scoring skulls first.
+# Only 1.2.1 seeds have them. They keep their IDs, which the DLL still decodes, and get
+# their own names because the shared-mode items took theirs ("Iron Skull").
+LEGACY_121_SCORING_SKULLS = [
+    "Anger", "Black Eye", "Blind", "Catch", "Eye Patch", "Famine", "Fog", "Foreign", "Iron",
+    "Mythic", "Recession", "That's Just... Wrong", "Thunderstorm", "Tough Luck",
+]
+LEGACY_121_NON_SCORING_SKULLS = [
+    "Bandana", "Boom", "Ghost", "Grunt Birthday Party", "Grunt Funeral", "Malfunction", "Pinata",
+    "Sputnik", "Acrophobia",
+]
+LEGACY_121_SKULL_ITEMS: dict[str, int] = {
+    f"{skull} Skull (1.2.1)": SKULL_OFFSET + i + 1
+    for i, skull in enumerate(LEGACY_121_SCORING_SKULLS + LEGACY_121_NON_SCORING_SKULLS)
+}
+LEGACY_121_SCORING_SKULL_ITEMS = [f"{skull} Skull (1.2.1)" for skull in LEGACY_121_SCORING_SKULLS]
+
+
 # create our own item object that has the game set correctly, everything else is the same as the base item object
 class MCCItem(Item):
     game = "Halo The Master Chief Collection"
@@ -43,7 +61,8 @@ def get_item_name_to_id():
     item_table = {
         "filler": 1,
         **{f"{level} Access": data.offset for level, data in LEVEL_DATA.items()},
-        **{name: item_id for name, (item_id, _) in SKULL_ITEMS.items()}
+        **{name: item_id for name, (item_id, _) in SKULL_ITEMS.items()},
+        **LEGACY_121_SKULL_ITEMS,
     }
     return item_table
 
@@ -77,7 +96,13 @@ def create_items(world):
     # Scoring skull items when skullsanity is all/inverted, non-scoring ones for any
     # skullsanity. In shared mode a skull several games have is still one item.
     skull_items: list[str] = []
-    for game in world.enabled_games:
+    if world.legacy_121:
+        # Only when Universal Tracker rebuilds a 1.2.1 seed, which is CE only
+        if world.options.skullsanity >= 2:
+            skull_items += LEGACY_121_SCORING_SKULL_ITEMS
+        if world.options.skullsanity >= 1:
+            skull_items += [f"{skull} Skull (1.2.1)" for skull in LEGACY_121_NON_SCORING_SKULLS]
+    for game in ([] if world.legacy_121 else world.enabled_games):
         if world.options.skullsanity >= 2:
             skull_items += skull_items_for_game(world, game, scoring=True)
         if world.options.skullsanity >= 1:
@@ -92,6 +117,7 @@ def create_items(world):
 
 # creates a single item with its classification and ID
 def create_item_with_data(world, name):
+    name = current_item_name(name)
     if "Access" in name:
         classification = ItemClassification.progression
         real_name = name.replace(" Access", "")
@@ -101,6 +127,12 @@ def create_item_with_data(world, name):
         item_id, skull = SKULL_ITEMS[name]
         # Scoring skulls gate mission completion under skullsanity "all"; non-scoring ones don't.
         if SKULLS_BY_NAME[skull].scoring:
+            classification = ItemClassification.progression
+        else:
+            classification = ItemClassification.useful
+    elif name in LEGACY_121_SKULL_ITEMS:
+        item_id = LEGACY_121_SKULL_ITEMS[name]
+        if name in LEGACY_121_SCORING_SKULL_ITEMS:
             classification = ItemClassification.progression
         else:
             classification = ItemClassification.useful

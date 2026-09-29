@@ -3,7 +3,7 @@ from BaseClasses import ItemClassification, Location
 from .items import MCCItem
 
 from .data.halo_ce_location_data import CE_LOCATION_DATA
-from .data.levels import CHAPTER_DATA, LEVEL_DATA, SKULL_LOCATION_DATA
+from .data.levels import CHAPTER_DATA, CURRENT_TO_LEGACY_CE_LEVEL, LEVEL_DATA, SKULL_LOCATION_DATA
 
 #create our own location object that gets everything from the base location object and change game
 class MCCLocation(Location):
@@ -19,6 +19,15 @@ def get_location_name_to_id():
         **{name: location_id for name, (_, location_id, _) in SKULL_LOCATION_DATA.items()},
     }
     return location_map
+
+def get_legacy_location_names() -> dict[str, str]:
+    """Pre-1.4 name -> current name for CE's locations, which are named after their mission."""
+    legacy = {}
+    for name in get_location_name_to_id():
+        for new, old in CURRENT_TO_LEGACY_CE_LEVEL.items():
+            if name == f"{new} Complete" or name.startswith(f"{new} - "):
+                legacy[old + name[len(new):]] = name
+    return legacy
 
 def completion_event_location(level):
     return f"{level} Completed"
