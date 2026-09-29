@@ -586,6 +586,24 @@ namespace haloap {
         }
     }
 
+    namespace {
+        // MinHook puts a "jmp rel32" (E9) at each hooked target. MCC can unload a game DLL
+        // and load it again at the same base between two ticks (H3 does when quitting to
+        // the menu), which leaves the same HMODULE but the game's own code, unhooked.
+        bool HooksWereReset(const GameState& st)
+        {
+            const void* targets[] = { st.chapterTarget, st.wonTarget, st.skullTarget[0],
+                                      st.skullTarget[1], st.shellTarget };
+            for (const void* target : targets)
+            {
+                if (!target) continue;
+                __try { if (*(const uint8_t*)target != 0xE9) return true; }
+                __except (1) { return true; }
+            }
+            return false;
+        }
+    }
+
     void UpdateGameHooks(PipeClient* pipe)
     {
         g_pipe = pipe;
@@ -606,6 +624,11 @@ namespace haloap {
                     printf("[game] %s unloaded\n", kGames[gi].dll);
                     st.module = nullptr;  // hooks are dropped when it comes back
                 }
+            }
+            else if (module && HooksWereReset(st))
+            {
+                printf("[game] %s reloaded at the same address, reinstalling hooks\n", kGames[gi].dll);
+                InstallGame(gi, module);
             }
         }
 
