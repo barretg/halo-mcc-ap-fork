@@ -225,12 +225,14 @@ namespace haloap {
         }
         
         // H2 / H3 / H4 / Reach: "G_START:<game>:<map>", "G_CHAPTER:<game>:<map>:<key>",
-        // "G_COMPLETE:<game>:<map>"
-        const std::string gStart = "G_START:", gChapter = "G_CHAPTER:", gComplete = "G_COMPLETE:";
+        // "G_SKULL:<game>:<map>:<key>", "G_COMPLETE:<game>:<map>"
+        const std::string gStart = "G_START:", gChapter = "G_CHAPTER:", gComplete = "G_COMPLETE:",
+                          gSkull = "G_SKULL:";
         const bool isStart = message.rfind(gStart, 0) == 0;
         const bool isChapter = message.rfind(gChapter, 0) == 0;
         const bool isComplete = message.rfind(gComplete, 0) == 0;
-        if (isStart || isChapter || isComplete)
+        const bool isSkull = message.rfind(gSkull, 0) == 0;
+        if (isStart || isChapter || isComplete || isSkull)
         {
             std::string rest = message.substr(message.find(':') + 1);
             std::vector<std::string> parts;
@@ -240,7 +242,7 @@ namespace haloap {
                 if (colon == std::string::npos) break;
                 pos = colon + 1;
             }
-            if (parts.size() < (isChapter ? 3u : 2u)) {
+            if (parts.size() < ((isChapter || isSkull) ? 3u : 2u)) {
                 std::cerr << "[ap] malformed: " << message << "\n";
                 return true;
             }
@@ -262,6 +264,21 @@ namespace haloap {
                 std::cout << "[ap] game " << code << " mission start: " << mission.name << "\n";
                 if (mission.startLocationId)
                     SendLocation(mission.startLocationId);
+            }
+            else if (isSkull) {
+                // An exact key first; H2 skulls that aren't told apart match any pickup
+                uint32_t key = uint32_t(std::strtol(parts[2].c_str(), nullptr, 10));
+                const ChapterKeyDef* skull = nullptr;
+                for (const auto& k : mission.skulls)
+                    if (k.key == key) skull = &k;
+                for (const auto& k : mission.skulls)
+                    if (!skull && k.key == 0xFFFFFFFFu) skull = &k;
+                if (skull) {
+                    std::cout << "[ap] Skull: " << mission.name << " - " << skull->name << "\n";
+                    SendLocation(skull->locationId);
+                } else {
+                    std::cout << "[ap] " << mission.name << ": skull " << parts[2] << " has no location\n";
+                }
             }
             else if (isChapter) {
                 uint32_t key = uint32_t(std::strtoul(parts[2].c_str(), nullptr, 10));

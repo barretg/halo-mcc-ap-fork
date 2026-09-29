@@ -227,6 +227,21 @@ class ReachMissionsRequired(Range):
     default = 10
 
 
+class H2SkullPickups(Toggle):
+    """
+    Picking up a Halo 2 skull in a mission is a location. Every Halo 2 skull except
+    Blind (Outskirts) only spawns on Legendary.
+    """
+    display_name = "Halo 2 Skull Pickups"
+    default = False
+
+
+class H3SkullPickups(Toggle):
+    """Picking up a Halo 3 skull in a mission is a location. Halo 3 skulls only spawn on Normal or harder."""
+    display_name = "Halo 3 Skull Pickups"
+    default = True
+
+
 @dataclass
 class MCCOptions(PerGameCommonOptions):
     skullsanity: SkullSanity
@@ -242,6 +257,8 @@ class MCCOptions(PerGameCommonOptions):
     h3_enabled: H3Enabled
     h3_final_mission: H3FinalMission
     h3_missions_required: H3MissionsRequired
+    h2_skull_pickups: H2SkullPickups
+    h3_skull_pickups: H3SkullPickups
     h4_enabled: H4Enabled
     h4_final_mission: H4FinalMission
     h4_missions_required: H4MissionsRequired

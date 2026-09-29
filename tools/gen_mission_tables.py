@@ -19,6 +19,7 @@ REACH_SIDS = os.path.join(ROOT, "tools/reach_chapter_sids.json")
 OUT = os.path.join(ROOT, "HaloAP_launcher/Data/mission_order.h")
 
 CHAPTER_OFFSET = 10
+SKULL_LOCATION_OFFSET = 20
 # Games with a location for loading into each playable mission (levels.py MISSION_START_GAMES)
 MISSION_START_GAMES = {"h4"}
 
@@ -32,6 +33,19 @@ GAMES = [("h2a", 2, "H2_MISSIONS"), ("h3", 3, "H3_MISSIONS"), ("h4", 4, "H4_MISS
 
 def literal(node):
     return ast.literal_eval(node)
+
+
+def parse_skulls(tree):
+    """SKULL_PICKUPS: {game: {map: (S(name, key), ...)}}"""
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "SKULL_PICKUPS":
+            skulls = {}
+            for game_key, by_map in zip(node.value.keys, node.value.values):
+                skulls[literal(game_key)] = {
+                    literal(map_key): [(literal(c.args[0]), literal(c.args[1])) for c in entries.elts]
+                    for map_key, entries in zip(by_map.keys, by_map.values)}
+            return skulls
+    raise SystemExit("SKULL_PICKUPS not found")
 
 
 def parse_missions():
@@ -51,7 +65,7 @@ def parse_missions():
                     cinematic = any(k.arg == "cinematic" and literal(k.value) for k in call.keywords)
                     missions.append((name, map_name, chapters, cinematic))
                 lists[target.id] = missions
-    return lists
+    return lists, parse_skulls(tree)
 
 
 def cstr(s):
@@ -59,7 +73,7 @@ def cstr(s):
 
 
 def main():
-    lists = parse_missions()
+    lists, skulls = parse_missions()
     reach_sids = json.load(open(REACH_SIDS))
     out = [
         "#pragma once",
@@ -84,6 +98,7 @@ def main():
         "        const char* map;     // map name the DLL reports",
         "        int64_t startLocationId;  // 0: no mission-start location",
         "        std::vector<ChapterKeyDef> chapters;",
+        "        std::vector<ChapterKeyDef> skulls;  // key: what the DLL reports; 0xFFFFFFFF matches any",
         "    };",
         "",
         "    struct GameMissionOrder {",
@@ -97,7 +112,7 @@ def main():
     ]
     out.append('            {"ce", 1, {')
     for name, map_name in CE:
-        out.append(f"                {{{cstr(name)}, {cstr(map_name)}, 0, {{}}}},")
+        out.append(f"                {{{cstr(name)}, {cstr(map_name)}, 0, {{}}, {{}}}},")
     out.append("            }},")
     for key, code, list_name in GAMES:
         out.append(f'            {{"{key}", {code}, {{')
@@ -114,6 +129,10 @@ def main():
             out.append(f"                {{{cstr(name)}, {cstr(map_name)}, {start}, {{")
             for e in entries:
                 out.append(f"                    {e},")
+            out.append("                }, {")
+            for n, (skull, k) in enumerate(skulls.get(key, {}).get(map_name, []), start=1):
+                out.append(f"                    {{{k & 0xFFFFFFFF}u, {offset + SKULL_LOCATION_OFFSET + n}, "
+                           f"{cstr(skull + ' Skull')}}},")
             out.append("                }},")
         out.append("            }},")
     out += ["        };", "        return orders;", "    }", "", "}  // namespace haloap", ""]

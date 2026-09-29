@@ -20,6 +20,7 @@ namespace haloap {
         const char* map;     // map name the DLL reports
         int64_t startLocationId;  // 0: no mission-start location
         std::vector<ChapterKeyDef> chapters;
+        std::vector<ChapterKeyDef> skulls;  // key: what the DLL reports; 0xFFFFFFFF matches any
     };
 
     struct GameMissionOrder {
@@ -31,33 +32,41 @@ namespace haloap {
     inline const std::vector<GameMissionOrder>& GetGameMissionOrders() {
         static const std::vector<GameMissionOrder> orders = {
             {"ce", 1, {
-                {"The Pillar of Autumn", "a10", 0, {}},
-                {"Halo (CE)", "a30", 0, {}},
-                {"The Truth and Reconciliation", "a50", 0, {}},
-                {"The Silent Cartographer", "b30", 0, {}},
-                {"Assault on the Control Room", "b40", 0, {}},
-                {"343 Guilty Spark", "c10", 0, {}},
-                {"The Library", "c20", 0, {}},
-                {"Two Betrayals", "c40", 0, {}},
-                {"Keyes", "d20", 0, {}},
-                {"The Maw", "d40", 0, {}},
+                {"The Pillar of Autumn", "a10", 0, {}, {}},
+                {"Halo (CE)", "a30", 0, {}, {}},
+                {"The Truth and Reconciliation", "a50", 0, {}, {}},
+                {"The Silent Cartographer", "b30", 0, {}, {}},
+                {"Assault on the Control Room", "b40", 0, {}, {}},
+                {"343 Guilty Spark", "c10", 0, {}, {}},
+                {"The Library", "c20", 0, {}, {}},
+                {"Two Betrayals", "c40", 0, {}, {}},
+                {"Keyes", "d20", 0, {}, {}},
+                {"The Maw", "d40", 0, {}, {}},
             }},
             {"h2a", 2, {
                 {"The Heretic", "00a_introduction", 0, {
+                }, {
                 }},
                 {"The Armory", "01a_tutorial", 0, {
                     {0u, 202011, "One Size Fits All"},
+                }, {
+                    {4294967295u, 202021, "That's Just... Wrong Skull"},
                 }},
                 {"Cairo Station", "01b_spacestation", 0, {
                     {0u, 203011, "Home Field Advantage"},
                     {1u, 203012, "Priority Shift"},
                     {2u, 203013, "Authorized Personnel Only"},
                     {3u, 203014, "Return to Sender"},
+                }, {
+                    {4294967295u, 203021, "Thunderstorm Skull"},
                 }},
                 {"Outskirts", "03a_oldmombasa", 0, {
                     {0u, 204011, "They'll Regret That Too"},
                     {1u, 204012, "A Day at the Beach"},
                     {2u, 204013, "Speed Zone Ahead"},
+                }, {
+                    {5u, 204021, "IWHBYD Skull"},
+                    {6u, 204022, "Blind Skull"},
                 }},
                 {"Metropolis", "03b_newmombasa", 0, {
                     {0u, 205011, "Ladies Like Armor-Plating"},
@@ -65,125 +74,175 @@ namespace haloap {
                     {2u, 205011, "Ladies Like Armor-Plating"},
                     {3u, 205012, "This Town Ain't Big Enough for Both of Us"},
                     {4u, 205013, "Field Expedient"},
+                }, {
+                    {4294967295u, 205021, "Catch Skull"},
                 }},
                 {"The Arbiter", "04a_gasgiant", 0, {
                     {0u, 206011, "A Whisper in the Storm"},
                     {1u, 206012, "To the Hunt"},
+                }, {
+                    {4294967295u, 206021, "Grunt Birthday Party Skull"},
                 }},
                 {"The Oracle", "04b_floodlab", 0, {
                     {0u, 207011, "Juggernaut"},
                     {1u, 207012, "Hey, Watch This!"},
                     {2u, 207013, "Dead or Alive...Actually, Just Dead"},
+                }, {
+                    {4294967295u, 207021, "Famine Skull"},
                 }},
                 {"Delta Halo", "05a_deltaapproach", 0, {
                     {0u, 208011, "Helljumpers"},
                     {1u, 208012, "You Break It, You Buy It"},
                     {2u, 208013, "Off the Rock, Through the Bush, Nothing But Jackal"},
+                }, {
+                    {4294967295u, 208021, "Envy Skull"},
                 }},
                 {"Regret", "05b_deltatowers", 0, {
                     {0u, 209011, "Testament"},
                     {1u, 209012, "One-Way Ticket"},
                     {3u, 209013, "Sorry, Were You in the Middle of Something?"},
+                }, {
+                    {4294967295u, 209021, "Assassins Skull"},
                 }},
                 {"Sacred Icon", "06a_sentinelwalls", 0, {
                     {0u, 210011, "Uncomfortable Silence"},
                     {1u, 210012, "Buyer's Remorse"},
                     {2u, 210013, "100,000 Years' War"},
+                }, {
+                    {4294967295u, 210021, "Mythic Skull"},
                 }},
                 {"Quarantine Zone", "06b_floodzone", 0, {
                     {0u, 211011, "Objects in Mirror are Larger Than They Appear"},
                     {1u, 211012, "Healthy Competition"},
                     {2u, 211013, "Shooting Gallery"},
                     {3u, 211014, "That Old, Familiar Feeling"},
+                }, {
+                    {4294967295u, 211021, "Sputnik Skull"},
                 }},
                 {"Gravemind", "07a_highcharity", 0, {
                     {0u, 212011, "Inside Job"},
                     {1u, 212012, "You Can Thank Me Later"},
                     {2u, 212013, "Grudge-Match"},
                     {3u, 212014, "Turning in Their Graves"},
+                }, {
+                    {4294967295u, 212021, "Anger Skull"},
                 }},
                 {"Uprising", "08a_deltacliffs", 0, {
                     {0u, 213011, "Oh, So That's How it Is"},
                     {1u, 213012, "Step Aside, Let the Man Go Through"},
                     {2u, 213013, "Fight Club"},
+                }, {
+                    {4294967295u, 213021, "Ghost Skull"},
                 }},
                 {"High Charity", "07b_forerunnership", 0, {
                     {0u, 214011, "Cross-Purposes"},
                     {1u, 214012, "Please, Make Yourself at Home"},
                     {2u, 214013, "Sanctified"},
                     {3u, 214014, "Once More, With Feeling"},
+                }, {
+                    {4294967295u, 214021, "Iron Skull"},
                 }},
                 {"The Great Journey", "08b_deltacontrol", 0, {
                     {0u, 215011, "Your Ass, My Size-24 Hoof"},
                     {1u, 215012, "Backseat Driver"},
                     {2u, 215013, "Delusions and Grandeur"},
+                }, {
+                    {4294967295u, 215021, "Black Eye Skull"},
                 }},
             }},
             {"h3", 3, {
                 {"Arrival", "005_intro", 0, {
+                }, {
                 }},
                 {"Sierra 117", "010_jungle", 0, {
                     {0u, 302011, "Walk It Off"},
                     {1u, 302012, "Charlie Foxtrot"},
                     {2u, 302013, "Quid Pro Quo"},
+                }, {
+                    {0u, 302021, "Iron Skull"},
+                    {101u, 302022, "Blind Skull"},
                 }},
                 {"Crow's Nest", "020_base", 0, {
                     {0u, 303011, "Know Your Role..."},
                     {1u, 303012, "Gift with Purchase"},
                     {2u, 303013, "Last One Out, Get the Lights"},
+                }, {
+                    {1u, 303021, "Black Eye Skull"},
+                    {103u, 303022, "Grunt Birthday Party Skull"},
                 }},
                 {"Tsavo Highway", "030_outskirts", 0, {
                     {0u, 304011, "Full Contact Safari"},
                     {1u, 304012, "The Broken Path"},
+                }, {
+                    {2u, 304021, "Tough Luck Skull"},
                 }},
                 {"The Storm", "040_voi", 0, {
                     {0u, 305011, "Ghost Town"},
                     {1u, 305012, "Think Big"},
                     {2u, 305013, "Judgment"},
+                }, {
+                    {3u, 305021, "Catch Skull"},
                 }},
                 {"Floodgate", "050_floodvoi", 0, {
                     {0u, 306011, "It Followed Me Home"},
                     {1u, 306012, "Shadow of Intent"},
                     {2u, 306013, "Infinite Devil Machine"},
+                }, {
+                    {4u, 306021, "Fog Skull"},
                 }},
                 {"The Ark", "070_waste", 0, {
                     {0u, 307011, "Installation 00"},
                     {1u, 307012, "Forward Unto Dawn"},
                     {2u, 307013, "Real Men Don't Read Maps"},
+                }, {
+                    {5u, 307021, "Famine Skull"},
+                    {102u, 307022, "Cowbell Skull"},
                 }},
                 {"The Covenant", "100_citadel", 0, {
                     {0u, 308011, "Trident"},
                     {1u, 308012, "If You Want it Done Right..."},
                     {2u, 308013, "Journey's End"},
                     {3u, 308014, "Revelation"},
+                }, {
+                    {6u, 308021, "Thunderstorm Skull"},
+                    {104u, 308022, "IWHBYD Skull"},
                 }},
                 {"Cortana", "110_hc", 0, {
                     {0u, 309011, "Rampant"},
                     {1u, 309012, "Nor Hell a Fury..."},
+                }, {
+                    {7u, 309021, "Tilt Skull"},
                 }},
                 {"Halo", "120_halo", 0, {
                     {0u, 310011, "Full Circle"},
                     {1u, 310012, "The Way the World Ends"},
+                }, {
+                    {8u, 310021, "Mythic Skull"},
                 }},
                 {"Epilogue", "130_epilogue", 0, {
+                }, {
                 }},
             }},
             {"h4", 4, {
                 {"Prologue", "m05_prologue", 0, {
+                }, {
                 }},
                 {"Dawn", "m10_crash", 402010, {
+                }, {
                 }},
                 {"Requiem", "m020", 403010, {
                     {15u, 403011, "Requiem"},
                     {19u, 403011, "Requiem"},
                     {16u, 403012, "A Star to Steer By"},
                     {17u, 403013, "The Gateway"},
+                }, {
                 }},
                 {"Forerunner", "m30_cryptum", 404010, {
                     {35u, 404011, "Buried and Forgotten"},
                     {36u, 404012, "Enemy of My Enemy"},
                     {37u, 404013, "Almost Home"},
                     {38u, 404014, "Next Stop, Certain Death"},
+                }, {
                 }},
                 {"Infinity", "m60_rescue", 405010, {
                     {36u, 405011, "Infinity"},
@@ -191,81 +250,98 @@ namespace haloap {
                     {39u, 405013, "The Gun Show"},
                     {40u, 405014, "Shining Armor"},
                     {41u, 405015, "Eviction Proceedings"},
+                }, {
                 }},
                 {"Reclaimer", "m40_invasion", 406010, {
                     {67u, 406011, "Size Matters"},
                     {66u, 406012, "The Gravity of the Situation"},
+                }, {
                 }},
                 {"Shutdown", "m70_liftoff", 407010, {
                     {16u, 407011, "Once More Unto the Breach"},
                     {18u, 407012, "Change of Plan"},
+                }, {
                 }},
                 {"Composer", "m80_delta", 408010, {
                     {1u, 408011, "Any Landing You Can Walk Away From"},
                     {2u, 408012, "The Composer"},
                     {4u, 408013, "All Things Lost and Found..."},
+                }, {
                 }},
                 {"Midnight", "m90_sacrifice", 409010, {
                     {0u, 409011, "One Last Shot"},
                     {2u, 409012, "From the Cradle..."},
                     {3u, 409013, "...To the Grave"},
                     {10u, 409014, "Old Friends"},
+                }, {
                 }},
                 {"Epilogue", "m95_epilogue", 0, {
+                }, {
                 }},
             }},
             {"reach", 6, {
                 {"Noble Actual", "m05", 0, {
+                }, {
                 }},
                 {"Winter Contingency", "m10", 0, {
                     {56672u, 602011, "NOBLE Team"},
                     {56673u, 602012, "Rebels Don't Leave Plasma Burns..."},
                     {56674u, 602013, "Skeleton Crew"},
+                }, {
                 }},
                 {"ONI: Sword Base", "m20", 0, {
                     {3440u, 603011, "The Best Defense..."},
                     {3441u, 603012, "Get the Hell Off My Lawn!"},
                     {3442u, 603013, "Office of Naval Intelligence"},
                     {39337u, 603014, "Minimum Safe Distance"},
+                }, {
                 }},
                 {"Nightfall", "m30", 0, {
                     {3644u, 604011, "...Too Quiet"},
                     {3645u, 604012, "Let Sleeping Dogs Lie"},
                     {3646u, 604013, "I'll Just Leave This Here..."},
+                }, {
                 }},
                 {"Tip of the Spear", "m35", 0, {
                     {42795u, 605011, "Tempest Perimeter"},
                     {42796u, 605012, "Hand Over Fist"},
                     {42797u, 605013, "The Spire"},
+                }, {
                 }},
                 {"Long Night of Solace", "m45", 0, {
                     {3991u, 606011, "First Floor: Aliens, Beaches, Secret Launch Stations"},
                     {3992u, 606012, "Operation: Upper Cut"},
                     {3993u, 606013, "And the Horse You Flew In On..."},
                     {3994u, 606013, "And the Horse You Flew In On..."},
+                }, {
                 }},
                 {"Exodus", "m50", 0, {
                     {3806u, 607011, "The Devil His Due"},
                     {3807u, 607012, "Too Close to the Sun"},
                     {3808u, 607013, "I Should Have Become a Watchmaker"},
+                }, {
                 }},
                 {"New Alexandria", "m52", 0, {
                     {3287u, 608011, "Fly by Night"},
                     {3288u, 608012, "Last One Out... Turn Out the Lights"},
+                }, {
                 }},
                 {"The Package", "m60", 0, {
                     {3002u, 609011, "Torch and Burn"},
                     {3003u, 609012, "Latchkey"},
                     {3004u, 609013, "This Cave is Not a Natural Formation"},
+                }, {
                 }},
                 {"The Pillar of Autumn", "m70", 0, {
                     {3592u, 610011, "Once More unto the Breach"},
                     {3593u, 610012, "This Town Isn't Big Enough"},
                     {3594u, 610013, "Shipbreaker"},
                     {3595u, 610014, "Keyes"},
+                }, {
                 }},
                 {"Lone Wolf", "m70_bonus", 0, {
                     {25307u, 611011, "There'll be Another Time..."},
+                }, {
                 }},
             }},
         };

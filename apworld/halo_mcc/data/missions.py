@@ -170,6 +170,49 @@ MISSIONS: dict[str, list[Mission]] = {
 }
 
 
+class SkullPickup(NamedTuple):
+    name: str  # skull name, as in skulls.SKULLS
+    key: int   # what the DLL reports for the pickup; -1: any pickup on the map
+
+
+# Skulls found in each mission, by map. Halo 4 and Reach have none in their campaigns.
+#   H3: the skull index passed to campaign_metagame_award_primary_skull, or 100 + the
+#       index for campaign_metagame_award_secondary_skull (from the H3EK mission scripts).
+#   H2: the flavor passed to ice_cream_flavor_stock (H2EK mission scripts). Outskirts is the
+#       only mission with two skulls; the others match any pickup on their map.
+#       Every H2 skull except Blind only spawns on Legendary.
+S = SkullPickup
+SKULL_PICKUPS: dict[str, dict[str, tuple[SkullPickup, ...]]] = {
+    "h2a": {
+        "01a_tutorial": (S("That's Just... Wrong", -1),),
+        "01b_spacestation": (S("Thunderstorm", -1),),
+        "03a_oldmombasa": (S("IWHBYD", 5), S("Blind", 6)),
+        "03b_newmombasa": (S("Catch", -1),),
+        "04a_gasgiant": (S("Grunt Birthday Party", -1),),
+        "04b_floodlab": (S("Famine", -1),),
+        "05a_deltaapproach": (S("Envy", -1),),
+        "05b_deltatowers": (S("Assassins", -1),),
+        "06a_sentinelwalls": (S("Mythic", -1),),
+        "06b_floodzone": (S("Sputnik", -1),),
+        "07a_highcharity": (S("Anger", -1),),
+        "08a_deltacliffs": (S("Ghost", -1),),
+        "07b_forerunnership": (S("Iron", -1),),
+        "08b_deltacontrol": (S("Black Eye", -1),),
+    },
+    "h3": {
+        "010_jungle": (S("Iron", 0), S("Blind", 101)),
+        "020_base": (S("Black Eye", 1), S("Grunt Birthday Party", 103)),
+        "030_outskirts": (S("Tough Luck", 2),),
+        "040_voi": (S("Catch", 3),),
+        "050_floodvoi": (S("Fog", 4),),
+        "070_waste": (S("Famine", 5), S("Cowbell", 102)),
+        "100_citadel": (S("Thunderstorm", 6), S("IWHBYD", 104)),
+        "110_hc": (S("Tilt", 7),),
+        "120_halo": (S("Mythic", 8),),
+    },
+}
+
+
 def level_name(game: str, mission: Mission) -> str:
     """Region/level name. Prefixed with the game so names can't clash with CE's."""
     return f"{GAME_INFO[game][1]}: {mission.name}"

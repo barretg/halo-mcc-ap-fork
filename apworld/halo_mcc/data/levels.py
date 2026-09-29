@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Dict
 from . import constants
-from .missions import MISSIONS, level_name, mission_offset
+from .missions import MISSIONS, SKULL_PICKUPS, level_name, mission_offset
 
 
 @dataclass
@@ -72,4 +72,16 @@ for _game in MISSION_START_GAMES:
             CHAPTER_DATA[f"{level_name(_game, _mission)} - Mission Start"] = (
                 level_name(_game, _mission),
                 mission_offset(_game, _number) + constants.CHAPTER_OFFSET,
+            )
+
+# Skull pickups in H2 and H3 missions: name -> (level, id, game). IDs are the mission's
+# offset + SKULL_LOCATION_OFFSET + n, like CE's. CE's skulls live in halo_ce_location_data.py.
+SKULL_LOCATION_DATA: Dict[str, tuple[str, int, str]] = {}
+for _game, _by_map in SKULL_PICKUPS.items():
+    for _number, _mission in enumerate(MISSIONS[_game], start=1):
+        for _n, _skull in enumerate(_by_map.get(_mission.map, ()), start=1):
+            SKULL_LOCATION_DATA[f"{level_name(_game, _mission)} - {_skull.name} Skull"] = (
+                level_name(_game, _mission),
+                mission_offset(_game, _number) + constants.SKULL_LOCATION_OFFSET + _n,
+                _game,
             )

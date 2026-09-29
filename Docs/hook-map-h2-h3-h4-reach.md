@@ -2,7 +2,7 @@
 
 Mappings for the equivalents of the Halo CE hooks in `HaloAP_DLL/hooks/chapter_title.cpp`
 (chapter reached) and `mission_complete.cpp` (mission won + current mission name).
-Not implemented yet. Every hook below was hit live under x64dbg (MCC on Proton, EAC off)
+Implemented in `HaloAP_DLL/hooks/game_hooks.cpp`. Every hook below was hit live under x64dbg (MCC on Proton, EAC off)
 on 2026-09-28.
 
 RVAs are relative to each game's DLL. The DLLs are relocated on every load, so resolve
@@ -176,3 +176,40 @@ Only the `title_N` indices below are chapters.
 
 The H2/H3/H4 editing kits (`H2EK`, `H3EK`, `H4EK` in the Steam library) include mission
 scripts that can be mined the same way for per-mission title indices.
+
+## After a win
+
+MCC loads the next mission after a win, which may be locked. What sends each game back to
+the menu instead (tested live 2026-09-28 by patching memory at the win):
+
+| Game | How MCC decides | Return to the menu by |
+|---|---|---|
+| H2 | the game advances itself after `game_won` (won byte at `[globals+0x1818]`, globals pointer at `halo2+0xE80A78`; clearing it doesn't help) | replacing the next engine shell command with the quit sequence |
+| H3 | `game_won` notifies MCC directly (`host->vfunc[0x18](2)`); clearing its won byte (`[TLS+0x48]+0xFB80`) doesn't help | same as H2 |
+| H4 | the won byte `[TLS+0x40]+0x2CF60`, read after the game ends (`+0x9CDF0`) | clearing the won byte after the win function returns |
+| Reach | the won byte `[TLS+0x48]+0x1EAC0`, read after the game ends (`+0x59330`) | same as H4 |
+
+The shell commands are CE's: `CreateGameEngine` stores the engine object in a global, and
+its vtable slot 3 is `(engine, int type, void* ctx)`. Quitting from the pause menu sends
+`0` (pause), `0xD` (teardown), `1` (resume); during play MCC sends type `5` every few seconds.
+H2's engine object is a wrapper whose slot 3 forwards to an inner handler; the messages are
+the same.
+
+## Skull pickups
+
+H4 and Reach have no skull pickups in their campaigns. H2 and H3 award skulls through
+script functions, found at runtime through their script definitions (the definition holds
+a pointer to the name and, 0x18 bytes on, the evaluator, which calls the implementation
+right after `mov ecx, [rax]`):
+
+| Game | Script function | Implementation | Arguments |
+|---|---|---|---|
+| H2 | `ice_cream_flavor_stock` | `halo2+0x6EF410` | `(flavor)`, 0–14 |
+| H3 | `campaign_metagame_award_primary_skull` | `halo3+0x136088` | `(player, skull)`, skull 0–8 |
+| H3 | `campaign_metagame_award_secondary_skull` | `halo3+0x136580` | `(player, skull)`, skull 1–4 |
+
+H3's mission scripts call these for player0..3 once the skull weapon is held. Only 8 of H2's
+15 `ice_cream_flavor_stock` calls are in the H2EK mission scripts (others are commented out),
+but the table of skull events it sends MCC covers all 15 and nothing else reads it, so the
+shipped maps are assumed to call it for every skull. Per-map skulls and keys are in
+`apworld/halo_mcc/data/missions.py` (`SKULL_PICKUPS`).

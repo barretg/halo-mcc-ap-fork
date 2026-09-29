@@ -3,7 +3,7 @@ from BaseClasses import ItemClassification, Location
 from .items import MCCItem
 
 from .data.halo_ce_location_data import CE_LOCATION_DATA
-from .data.levels import CHAPTER_DATA, LEVEL_DATA
+from .data.levels import CHAPTER_DATA, LEVEL_DATA, SKULL_LOCATION_DATA
 
 #create our own location object that gets everything from the base location object and change game
 class MCCLocation(Location):
@@ -16,6 +16,7 @@ def get_location_name_to_id():
         **{f"{data.level} - {name}": data.id for name, data in CE_LOCATION_DATA.items() if data.type == "Chapter"},
         **{f"{data.level} - {name}": data.id for name, data in CE_LOCATION_DATA.items() if data.type == "Skull"},
         **{name: location_id for name, (_, location_id) in CHAPTER_DATA.items()},
+        **{name: location_id for name, (_, location_id, _) in SKULL_LOCATION_DATA.items()},
     }
     return location_map
 
@@ -48,5 +49,11 @@ def create_locations(world):
 
     for name, (level, location_id) in CHAPTER_DATA.items():
         if LEVEL_DATA[level].game in world.enabled_games:
+            region = world.get_region(level)
+            region.locations.append(MCCLocation(world.player, name, location_id, region))
+
+    skull_options = {"h2a": world.options.h2_skull_pickups, "h3": world.options.h3_skull_pickups}
+    for name, (level, location_id, game) in SKULL_LOCATION_DATA.items():
+        if game in world.enabled_games and skull_options[game].value:
             region = world.get_region(level)
             region.locations.append(MCCLocation(world.player, name, location_id, region))
