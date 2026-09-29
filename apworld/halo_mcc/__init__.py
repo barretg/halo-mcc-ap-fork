@@ -14,6 +14,8 @@ class MCCWorld(World):
     options: MCCOptions
     required_client_version = (1, 2, 0)
     web = MCCWeb()
+    # Universal Tracker regenerates from slot data (see interpret_slot_data)
+    ut_can_gen_without_yaml = True
 
     #connects item names to their ID
     item_name_to_id = items.get_item_name_to_id()
@@ -59,4 +61,15 @@ class MCCWorld(World):
             "skull_item_mode": self.options.skull_item_mode.value,
             "final_missions": self.final_missions,
             "missions_required": self.missions_required,
+            # Read back by Universal Tracker's regeneration, see generate_early
+            "starting_missions": self.starting_missions,
+            "enabled_games": self.enabled_games,
+            "skulls_required": self.options.skulls_required.value,
+            "h2_skull_pickups": self.options.h2_skull_pickups.value,
+            "h3_skull_pickups": self.options.h3_skull_pickups.value,
         }
+
+    # Universal Tracker: hands the slot data back to generate_early as re_gen_passthrough
+    @staticmethod
+    def interpret_slot_data(slot_data: dict[str, Any]) -> dict[str, Any]:
+        return slot_data

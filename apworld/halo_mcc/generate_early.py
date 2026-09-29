@@ -11,7 +11,25 @@ def _option(world, game: str, name: str):
     return getattr(world.options, f"{GAME_OPTION_PREFIX[game]}_{name}")
 
 
+def _apply_tracker_slot_data(world) -> dict | None:
+    """Universal Tracker regenerates without the player's YAML; copy the real seed's
+    options from its slot data so the tracker's logic matches the server's."""
+    slot_data = getattr(world.multiworld, "re_gen_passthrough", {}).get(world.game)
+    if not slot_data or "starting_missions" not in slot_data:
+        return None
+    for game in GAME_OPTION_PREFIX:
+        _option(world, game, "enabled").value = int(game in slot_data["enabled_games"])
+    world.options.skullsanity.value = slot_data["skullsanity"]
+    world.options.skull_item_mode.value = slot_data["skull_item_mode"]
+    world.options.skulls_required.value = slot_data["skulls_required"]
+    world.options.h2_skull_pickups.value = slot_data["h2_skull_pickups"]
+    world.options.h3_skull_pickups.value = slot_data["h3_skull_pickups"]
+    return slot_data
+
+
 def generate_early(world):
+    tracker = _apply_tracker_slot_data(world)
+
     # Games whose missions are in this world
     world.enabled_games = [game for game in GAME_OPTION_PREFIX if _option(world, game, "enabled").value]
     if not world.enabled_games:
@@ -33,11 +51,17 @@ def generate_early(world):
         else:
             final = levels[choice - 1]
 
+        if tracker:
+            final = tracker["final_missions"][game]
+
         others = [level for level in levels if level != final]
         world.final_missions[game] = final
         world.game_missions[game] = others
         world.starting_missions[game] = world.random.choice([level for level in others if level in playable])
         world.missions_required[game] = min(_option(world, game, "missions_required").value, len(others))
+        if tracker:
+            world.starting_missions[game] = tracker["starting_missions"][game]
+            world.missions_required[game] = tracker["missions_required"][game]
         print(f"{game} final mission: {final}")
 
     # CE's final mission is still sent on its own for older clients

@@ -7,7 +7,7 @@ from .data.levels import CHAPTER_DATA, LEVEL_DATA, SKULL_LOCATION_DATA
 
 #create our own location object that gets everything from the base location object and change game
 class MCCLocation(Location):
-    game = "Halo Master Chief Collection"
+    game = "Halo The Master Chief Collection"
 
 #map all locations to their id
 def get_location_name_to_id():

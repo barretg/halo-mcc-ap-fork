@@ -35,7 +35,7 @@ def skull_items_for_game(world, game: str, scoring: bool) -> list[str]:
 
 # create our own item object that has the game set correctly, everything else is the same as the base item object
 class MCCItem(Item):
-    game = "Halo Master Chief Collection"
+    game = "Halo The Master Chief Collection"
 
 
 # this is what maps items to their ID
