@@ -56,6 +56,7 @@ namespace haloap {
         void OnItemsReceived(const std::list<APClient::NetworkItem>& items);
         void OnPrintJson(const APClient::PrintJSONArgs& args);
         void SendCompletionState();
+        bool IsMissionUnlocked(int code, int index, size_t missionCount);
         void OnFinalMissionComplete(int code);
         void CheckGoal();
         std::string FinalsKey() const;

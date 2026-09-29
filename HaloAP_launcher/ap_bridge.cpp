@@ -3,6 +3,7 @@
 #include "Data/chapter_map.h"
 #include "Data/mission_order.h"
 #include "shared/common.h"
+#include <algorithm>
 #include <iostream>
 #include <vector>
 #include <set>
@@ -90,6 +91,33 @@ namespace haloap {
             m_sendToDll("MISSIONS_REQUIRED:" + std::to_string(code) + ":" + std::to_string(required));
             std::cout << "[ap] Sent game " << code << " missions required: " << required << "\n";
         }
+    }
+
+    // Whether a non-CE mission is playable in this seed, as the DLL's menu decides it: its
+    // Access item was received, or it's the final and enough of the others are completed.
+    // Games without a final in slot data aren't restricted.
+    bool APBridge::IsMissionUnlocked(int code, int index, size_t missionCount) {
+        auto final = m_finalByGame.find(code);
+        if (final == m_finalByGame.end())
+            return true;
+
+        const int64_t accessId = int64_t(code) * 100000 + int64_t(index + 1) * 1000;
+        {
+            std::lock_guard<std::mutex> lock(m_itemBufferMutex);
+            if (std::find(m_itemBuffer.begin(), m_itemBuffer.end(), accessId) != m_itemBuffer.end())
+                return true;
+        }
+        if (index != final->second)
+            return false;
+
+        auto req = m_requiredByGame.find(code);
+        int required = req != m_requiredByGame.end() ? req->second : int(missionCount) - 1;
+        int done = 0;
+        std::lock_guard<std::mutex> lock(m_checkedMutex);
+        for (size_t i = 0; i < missionCount; i++)
+            if (int(i) != index && m_checkedLocations.count(int64_t(code) * 100000 + int64_t(i + 1) * 1000))
+                done++;
+        return done >= required;
     }
 
     APBridge::APBridge() = default;
@@ -268,6 +296,13 @@ namespace haloap {
                 return true;
             }
             const MissionDef& mission = game->missions[index];
+
+            // After a win H2 and H3 load the next mission before the DLL's quit to the menu
+            // lands; a locked one must not hand out its chapter card or anything else
+            if (!IsMissionUnlocked(code, index, game->missions.size())) {
+                std::cout << "[ap] " << mission.name << " is locked, ignoring: " << message << "\n";
+                return true;
+            }
 
             if (isStart) {
                 std::cout << "[ap] game " << code << " mission start: " << mission.name << "\n";

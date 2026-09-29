@@ -29,6 +29,9 @@ namespace haloap {
         //              the pause menu's quit sends. Slot 3 only queues the message for the
         //              engine thread, so it's sent right after the win (on the game thread) or
         //              from the tick. The same quit is used when a locked mission starts anyway.
+        //              H2 starts loading the next mission from the win itself, before the quit
+        //              lands, so its main loop's launch request is also dropped once after a
+        //              win (DetourLaunch).
         //   H4, Reach: the win sets a "game won" byte in the game globals before ending the
         //              game; MCC loads the next mission only if it's set, so it's cleared
         //              after the win function returns.
@@ -59,6 +62,7 @@ namespace haloap {
             SkullScript skulls[2];      // name nullptr: unused
             const char* const* maps;    // H2/H3: maps in menu order, for the locked-mission guard
             int mapCount;
+            const char* launchPattern;  // H2: the main loop's "launch the pending map" request
         };
 
         const char* const kH2Maps[] = {
@@ -80,7 +84,8 @@ namespace haloap {
               "48 83 EC 28 E8 ? ? ? ? 84 C0 74 ? 48 8D 0D ? ? ? ?",
               0x15A0B0C, true, PostWin::ShellQuit,
               { { "ice_cream_flavor_stock", 0, false }, {} },
-              kH2Maps, sizeof(kH2Maps) / sizeof(kH2Maps[0]) },
+              kH2Maps, sizeof(kH2Maps) / sizeof(kH2Maps[0]),
+              "B1 01 C6 05 ? ? ? ? 01 E9 ? ? ? ? CC CC 0F B6 05 ? ? ? ? C3" },
             { 3, "halo3.dll",
               "48 83 EC 28 8B 15 ? ? ? ? 45 33 C0", 0, ChapterKind::TitleIndex,
               "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 E8 ? ? ? ? 33 FF",
@@ -108,6 +113,11 @@ namespace haloap {
         typedef void (*TitleFn)(uint16_t index, float duration);
         typedef uint64_t (*Passthrough4Fn)(uint64_t, uint64_t, uint64_t, uint64_t);
         typedef void (*ShellCommandFn)(void* engine, int type, void* context);
+        typedef void (*LaunchRequestFn)();
+
+        // How long after a win a launch request is still taken as the win's move to the
+        // next mission (H2's ending cinematic can run before it)
+        constexpr ULONGLONG kLaunchBlockMs = 120000;
 
         struct GameState {
             HMODULE module = nullptr;
@@ -132,6 +142,12 @@ namespace haloap {
             const uint32_t* wonTlsIndex = nullptr;
             uint32_t wonSlot = 0;
             uint32_t wonFlag = 0;
+
+            // H2: after a win the next map's launch request is dropped until this tick
+            // count, so the next mission never starts loading before the quit lands
+            void* launchTarget = nullptr;
+            void* launchOriginal = nullptr;
+            std::atomic<ULONGLONG> blockLaunchUntil{ 0 };
         };
 
         GameState g_state[kGameCount];
@@ -269,8 +285,13 @@ namespace haloap {
             uint64_t result = original ? original(a, b, c, d) : 0;
             if (kGames[GI].postWin == PostWin::ClearWonFlag)
                 ClearWonFlag(GI);
-            else if (!SendQuit(GI))
-                g_state[GI].quitPending.store(true);  // sent on the next tick or shell command
+            else
+            {
+                if (g_state[GI].launchTarget)
+                    g_state[GI].blockLaunchUntil.store(GetTickCount64() + kLaunchBlockMs);
+                if (!SendQuit(GI))
+                    g_state[GI].quitPending.store(true);  // sent on the next tick or shell command
+            }
             return result;
         }
 
@@ -375,6 +396,36 @@ namespace haloap {
             case 5: return (void*)&DetourSkull<2, 1>;
             case 6: return (void*)&DetourSkull<3, 0>;
             case 7: return (void*)&DetourSkull<3, 1>;
+            }
+            return nullptr;
+        }
+
+        // H2's main loop request to launch the pending map. Takes no arguments; the
+        // original sets the pending flag and starts the loading screen.
+        template <int GI>
+        void DetourLaunch()
+        {
+            GameState& st = g_state[GI];
+            ULONGLONG until = st.blockLaunchUntil.exchange(0);
+            if (until && GetTickCount64() < until)
+            {
+                printf("[game] %s: next mission launch after the win blocked\n", kGames[GI].dll);
+                if (!SendQuit(GI))
+                    st.quitPending.store(true);
+                return;
+            }
+            auto original = (LaunchRequestFn)st.launchOriginal;
+            if (original) original();
+        }
+
+        void* LaunchDetourFor(int gi)
+        {
+            switch (gi)
+            {
+            case 0: return (void*)&DetourLaunch<0>;
+            case 1: return (void*)&DetourLaunch<1>;
+            case 2: return (void*)&DetourLaunch<2>;
+            case 3: return (void*)&DetourLaunch<3>;
             }
             return nullptr;
         }
@@ -510,6 +561,8 @@ namespace haloap {
             DropHook(st.skullTarget[0], st.skullOriginal[0], sameModule);
             DropHook(st.skullTarget[1], st.skullOriginal[1], sameModule);
             DropHook(st.shellTarget, st.shellOriginal, sameModule);
+            DropHook(st.launchTarget, st.launchOriginal, sameModule);
+            st.blockLaunchUntil.store(0);
             st.hookedModule = module;
             st.engineGlobal = nullptr;
             st.quitPending.store(false);
@@ -553,6 +606,15 @@ namespace haloap {
                     printf("[game] %s: engine global not found; a win will load the next mission\n", def.dll);
             }
 
+            if (def.launchPattern)
+            {
+                void* launch = FindPatternInModule(module, def.launchPattern);
+                if (!launch)
+                    printf("[game] %s: launch request pattern not found; a win may load the next mission\n", def.dll);
+                else if (Hook("launch request", def.dll, launch, LaunchDetourFor(gi), &st.launchOriginal))
+                    st.launchTarget = launch;
+            }
+
             for (int k = 0; k < 2; k++)
             {
                 if (!def.skulls[k].name) continue;
@@ -593,7 +655,7 @@ namespace haloap {
         bool HooksWereReset(const GameState& st)
         {
             const void* targets[] = { st.chapterTarget, st.wonTarget, st.skullTarget[0],
-                                      st.skullTarget[1], st.shellTarget };
+                                      st.skullTarget[1], st.shellTarget, st.launchTarget };
             for (const void* target : targets)
             {
                 if (!target) continue;
