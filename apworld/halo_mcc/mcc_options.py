@@ -84,7 +84,7 @@ class CeMissionsRequired(Range):
 
 class H2Enabled(Toggle):
     """
-    Include Halo 2 missions. Experimental: the client can't play Halo 2 yet.
+    Include Halo 2 missions.
     """
     display_name = "Enable Halo 2"
     default = False
@@ -124,7 +124,7 @@ class H2MissionsRequired(Range):
 
 class H3Enabled(Toggle):
     """
-    Include Halo 3 missions. Experimental: the client can't play Halo 3 yet.
+    Include Halo 3 missions.
     """
     display_name = "Enable Halo 3"
     default = False
@@ -159,7 +159,7 @@ class H3MissionsRequired(Range):
 
 class H4Enabled(Toggle):
     """
-    Include Halo 4 missions. Experimental: the client can't play Halo 4 yet.
+    Include Halo 4 missions.
     """
     display_name = "Enable Halo 4"
     default = False
@@ -193,7 +193,7 @@ class H4MissionsRequired(Range):
 
 class ReachEnabled(Toggle):
     """
-    Include Halo Reach missions. Experimental: the client can't play Halo Reach yet.
+    Include Halo Reach missions.
     """
     display_name = "Enable Halo Reach"
     default = False
