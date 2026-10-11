@@ -60,6 +60,18 @@ namespace haloap {
         void OnFinalMissionComplete(int code);
         void CheckGoal();
         std::string FinalsKey() const;
+
+        // Death Link. The DLL reports each death as natural (G_DEATH) or caused by a
+        // received link (G_DEATH_LINKED); only natural ones count toward the amnesty or
+        // go out. Our own bounces come back from the server and are ignored.
+        void OnBounced(const nlohmann::json& packet);
+        void OnLocalDeath(int code);
+        std::list<std::string> ConnectTags() const;
+        std::string AmnestyKey() const;
+        std::atomic<bool> m_deathLink{ false };
+        int m_deathLinkAmnesty{ 0 };
+        int m_deathsForgiven{ 0 };  // natural deaths since the last one sent; kept on the server
+        std::mutex m_deathMutex;
         std::set<int> m_finalsDone;  // game codes whose final mission is done
         
         std::function<void(const std::string&)> m_sendToDll;

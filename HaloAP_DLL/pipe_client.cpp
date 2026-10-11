@@ -1,5 +1,6 @@
 #include "pipe_client.h"
 #include "item_handler.h"
+#include "deathlink.h"
 #include "hooks/skull_hook.h"
 #include "shared/common.h"
 #include <cstdio>
@@ -284,6 +285,13 @@ void PipeClient::HandleMessage(const std::string& message)
         int count = std::atoi(splitGame(message.substr(missionsRequiredPrefix.size()), game).c_str());
         haloap::GetItemHandler().setMissionsRequired(game, count);
         printf("[pipe] Game %d missions required for final: %d\n", game, count);
+        return;
+    }
+
+    const std::string deathLinkPrefix = "DEATHLINK: ";
+    if (message.rfind(deathLinkPrefix, 0) == 0)
+    {
+        haloap::RequestDeathLinkKill(message.substr(deathLinkPrefix.size()));
         return;
     }
 

@@ -4,9 +4,9 @@
 # plain `wine` with WINEPREFIX would start a second, incompatible wineserver.
 set -u
 APPID=976730
-GAME_ROOT="/mnt/win/f/SteamLibrary/steamapps/common/Halo The Master Chief Collection"
+GAME_ROOT="/games/SteamLibrary/steamapps/common/Halo The Master Chief Collection"
 BIN="$GAME_ROOT/MCC/Binaries/Win64"
-PROTON="/mnt/win/f/SteamLibrary/steamapps/common/Proton Hotfix/proton"
+PROTON="/games/SteamLibrary/steamapps/common/Proton Hotfix/proton"
 X64DBG="$HOME/Applications/x64dbg/release/x64/x64dbg.exe"
 LOG="$HOME/.cache/ap-launcher/mcc-dbg.log"
 
@@ -14,7 +14,7 @@ pgrep -x steam >/dev/null || { echo "Start Steam first"; exit 1; }
 [ -f "$BIN/bink2w64_original.dll" ] && { echo "Mod files still installed -- run halo-ap.sh cleanup first"; exit 1; }
 mkdir -p "$(dirname "$LOG")"
 
-export STEAM_COMPAT_DATA_PATH="$HOME/.local/share/Steam/steamapps/compatdata/$APPID"
+export STEAM_COMPAT_DATA_PATH="/games/SteamLibrary/steamapps/compatdata/$APPID"
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.local/share/Steam"
 # `runinprefix` skips Proton's prefix setup, which is where the DXVK / vkd3d-proton
 # overrides get added. Without them Wine falls back to builtin wined3d (OpenGL),

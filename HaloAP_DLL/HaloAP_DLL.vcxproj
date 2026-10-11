@@ -158,6 +158,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="hooks\ce_deathlink.h" />
     <ClInclude Include="hooks\chapter_title.h" />
     <ClInclude Include="hooks\game_hooks.h" />
     <ClInclude Include="hooks\load_level_solo.h" />
@@ -168,6 +169,7 @@
     <ClInclude Include="hooks\shell_command.h" />
     <ClInclude Include="hooks\shell_level_load.h" />
     <ClInclude Include="hooks\skull_hook.h" />
+    <ClInclude Include="deathlink.h" />
     <ClInclude Include="item_handler.h" />
     <ClInclude Include="minhook\MinHook.h" />
     <ClInclude Include="minhook\src\buffer.h" />
@@ -182,6 +184,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="hooks\ce_deathlink.cpp" />
     <ClCompile Include="hooks\chapter_title.cpp" />
     <ClCompile Include="hooks\game_hooks.cpp" />
     <ClCompile Include="hooks\load_level_solo.cpp" />
@@ -192,6 +195,7 @@
     <ClCompile Include="hooks\shell_command.cpp" />
     <ClCompile Include="hooks\shell_level_load.cpp" />
     <ClCompile Include="hooks\skull_hook.cpp" />
+    <ClCompile Include="deathlink.cpp" />
     <ClCompile Include="item_handler.cpp" />
     <ClCompile Include="minhook\src\buffer.c" />
     <ClCompile Include="minhook\src\hde\hde32.c" />

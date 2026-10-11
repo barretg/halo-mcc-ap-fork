@@ -19,6 +19,7 @@
 #include "hooks/mission_select_block.h"
 #include "hooks/chapter_title.h"
 #include "hooks/skull_hook.h"
+#include "hooks/ce_deathlink.h"
 
 
 #pragma comment(lib, "psapi.lib")
@@ -91,6 +92,7 @@ namespace
         haloap::InstallLoadLevelSoloHook(g_pipe);
         haloap::InstallChapterTitleHook(g_pipe);
         haloap::InstallSkullHook(g_pipe);
+        haloap::InstallCeDeathLinkHook(g_pipe);
     }
 
     void UninstallHalo1Hooks()
@@ -101,6 +103,7 @@ namespace
         haloap::UninstallMissionIdLookupHook();
         haloap::UninstallChapterTitleHook();
         haloap::UninstallSkullHook();
+        haloap::UninstallCeDeathLinkHook();
     }
 
     void UninstallVtableHooks()

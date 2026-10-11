@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from Options import PerGameCommonOptions, Toggle, Choice, Range
+from Options import PerGameCommonOptions, Toggle, Choice, Range, DeathLink
 
 
 class SkullSanity(Choice):
@@ -242,6 +242,19 @@ class H3SkullPickups(Toggle):
     default = True
 
 
+class DeathLinkAmnesty(Range):
+    """
+    With Death Link on, how many of your own deaths are forgiven before one is sent to
+    the other players. With 2, your 1st and 2nd deaths are ignored, the 3rd is sent,
+    and the count starts over. Deaths caused by a Death Link from someone else never
+    count toward this.
+    """
+    display_name = "Death Link Amnesty"
+    range_start = 0
+    range_end = 50
+    default = 0
+
+
 @dataclass
 class MCCOptions(PerGameCommonOptions):
     skullsanity: SkullSanity
@@ -265,3 +278,5 @@ class MCCOptions(PerGameCommonOptions):
     reach_enabled: ReachEnabled
     reach_final_mission: ReachFinalMission
     reach_missions_required: ReachMissionsRequired
+    death_link: DeathLink
+    death_link_amnesty: DeathLinkAmnesty

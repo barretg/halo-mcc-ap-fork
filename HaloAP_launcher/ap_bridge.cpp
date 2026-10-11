@@ -170,6 +170,13 @@ namespace haloap {
         m_client->set_slot_connected_handler([this](const nlohmann::json& data) { OnSlotConnected(data); });
         m_client->set_slot_refused_handler([this](const std::list<std::string>& reasons) { OnSlotRefused(reasons); });
         m_client->set_retrieved_handler([this](const std::map<std::string, nlohmann::json>& keys) {
+            auto amnesty = keys.find(AmnestyKey());
+            if (amnesty != keys.end() && amnesty->second.is_number_integer()) {
+                std::lock_guard<std::mutex> lock(m_deathMutex);
+                m_deathsForgiven = amnesty->second.get<int>();
+                std::cout << "[deathlink] " << m_deathsForgiven << "/" << m_deathLinkAmnesty
+                          << " deaths forgiven so far\n";
+            }
             auto it = keys.find(FinalsKey());
             if (it == keys.end() || !it->second.is_array()) return;
             {
@@ -181,6 +188,7 @@ namespace haloap {
         });
         m_client->set_items_received_handler([this](const std::list<APClient::NetworkItem>& items) { OnItemsReceived(items); });
         m_client->set_print_json_handler([this](const APClient::PrintJSONArgs& args) { OnPrintJson(args); });
+        m_client->set_bounced_handler([this](const nlohmann::json& packet) { OnBounced(packet); });
 
         std::cout << "[ap] connecting to " << serverUri << " as slot '" << slot << "'...\n";
         return true;
@@ -261,6 +269,18 @@ namespace haloap {
             return true;
         }
         
+        // "G_DEATH:<game>" the player died; "G_DEATH_LINKED:<game>" a received Death Link
+        // killed them, which never counts or goes back out
+        const std::string gDeathLinked = "G_DEATH_LINKED:", gDeath = "G_DEATH:";
+        if (message.rfind(gDeathLinked, 0) == 0) {
+            std::cout << "[deathlink] died from a received Death Link, not sent\n";
+            return true;
+        }
+        if (message.rfind(gDeath, 0) == 0) {
+            OnLocalDeath(std::atoi(message.c_str() + gDeath.size()));
+            return true;
+        }
+
         // H2 / H3 / H4 / Reach: "G_START:<game>:<map>", "G_CHAPTER:<game>:<map>:<key>",
         // "G_SKULL:<game>:<map>:<key>", "G_COMPLETE:<game>:<map>"
         const std::string gStart = "G_START:", gChapter = "G_CHAPTER:", gComplete = "G_COMPLETE:",
@@ -443,8 +463,9 @@ namespace haloap {
         std::cout << "[ap] room info received; attempting slot connect...\n";
         // ConnectSlot params: slot name, password, items-handling flags, tags, version
         // Items handling 0b111 = all items (local, starting inventory, world items).
-        std::list<std::string> tags;  // no special tags for now
-        m_client->ConnectSlot(m_slot, m_password, 0b111, tags, { 1, 2, 0 });
+        // DeathLink is only known from slot data, so the first connect goes without it and
+        // OnSlotConnected adds it; reconnects keep it
+        m_client->ConnectSlot(m_slot, m_password, 0b111, ConnectTags(), { 1, 2, 0 });
     }
 
     void APBridge::OnSlotConnected(const nlohmann::json& slotData) {
@@ -493,10 +514,16 @@ namespace haloap {
         {
             m_skullsanityTier = slotData["skullsanity"].get<int>();
         }
-        
-        
-        // Finals already done in earlier sessions
-        m_client->Get({ FinalsKey() });
+
+        m_deathLink.store(slotData.value("death_link", 0) != 0);
+        m_deathLinkAmnesty = slotData.value("death_link_amnesty", 0);
+        if (m_deathLink.load()) {
+            m_client->ConnectUpdate(false, 0, true, ConnectTags());
+            std::cout << "[deathlink] on, amnesty " << m_deathLinkAmnesty << "\n";
+        }
+
+        // Finals already done in earlier sessions, and deaths forgiven so far
+        m_client->Get({ FinalsKey(), AmnestyKey() });
 
         SendCompletionState();
     }
@@ -525,6 +552,74 @@ namespace haloap {
                 m_sendToDll("ITEM_RECIVED: " + std::to_string(item.item));
             }
         }
+    }
+
+    std::list<std::string> APBridge::ConnectTags() const {
+        if (m_deathLink.load()) return { "DeathLink" };
+        return {};
+    }
+
+    std::string APBridge::AmnestyKey() const {
+        return "halo_mcc_deathlink_amnesty_" + std::to_string(m_client->get_team_number()) + "_" +
+               std::to_string(m_client->get_player_number());
+    }
+
+    void APBridge::OnBounced(const nlohmann::json& packet) {
+        if (!m_deathLink.load()) return;
+        auto tags = packet.find("tags");
+        if (tags == packet.end() || !tags->is_array() ||
+            std::find(tags->begin(), tags->end(), "DeathLink") == tags->end())
+            return;
+        auto data = packet.find("data");
+        if (data == packet.end() || !data->is_object()) return;
+
+        std::string source = data->value("source", "");
+        // The server bounces our own Death Link back to us too
+        if (source == m_slot) return;
+        std::string cause = data->value("cause", "");
+        std::cout << "[deathlink] received from " << source << (cause.empty() ? "" : ": " + cause) << "\n";
+        if (m_sendToDll)
+            m_sendToDll("DEATHLINK: " + source);
+    }
+
+    void APBridge::OnLocalDeath(int code) {
+        if (!m_deathLink.load()) return;
+        if (!m_client || !m_slotConnected.load()) {
+            std::cerr << "[deathlink] died while not connected, not sent\n";
+            return;
+        }
+
+        int forgiven;
+        {
+            std::lock_guard<std::mutex> lock(m_deathMutex);
+            if (m_deathsForgiven < m_deathLinkAmnesty) {
+                forgiven = ++m_deathsForgiven;
+            } else {
+                m_deathsForgiven = 0;
+                forgiven = -1;
+            }
+            m_client->Set(AmnestyKey(), 0, false, { { "replace", m_deathsForgiven } });
+        }
+        if (forgiven >= 0) {
+            std::cout << "[deathlink] death forgiven (" << forgiven << "/" << m_deathLinkAmnesty << ")\n";
+            return;
+        }
+
+        std::string game = "Halo";
+        for (const auto& order : GetGameMissionOrders())
+            if (order.code == code) game = order.key;
+        static const std::map<std::string, std::string> kGameNames = {
+            { "ce", "Halo: Combat Evolved" }, { "h2", "Halo 2" }, { "h3", "Halo 3" },
+            { "h4", "Halo 4" }, { "reach", "Halo: Reach" },
+        };
+        auto name = kGameNames.find(game);
+        nlohmann::json data = {
+            { "time", m_client->get_server_time() },
+            { "source", m_slot },
+            { "cause", m_slot + " died in " + (name != kGameNames.end() ? name->second : game) + "." },
+        };
+        m_client->Bounce(data, {}, {}, { "DeathLink" });
+        std::cout << "[deathlink] sent: " << data["cause"].get<std::string>() << "\n";
     }
 
     void APBridge::OnPrintJson(const APClient::PrintJSONArgs& args) {

@@ -2,6 +2,7 @@
 #include "../minhook/MinHook.h"
 #include "../pattern_scan.h"
 #include "../item_handler.h"
+#include "../deathlink.h"
 #include <windows.h>
 #include <psapi.h>
 #include <intrin.h>
@@ -35,6 +36,13 @@ namespace haloap {
         //   H4, Reach: the win sets a "game won" byte in the game globals before ending the
         //              game; MCC loads the next mission only if it's set, so it's cleared
         //              after the win function returns.
+        //
+        // Death Link (see deathlink.h): the campaign update calls game_lost(all_players_dead)
+        // every tick, and that sets a "lost" byte in the game globals once everyone is dead.
+        // Its 0 -> 1 edge is a death, so in co-op only a full wipe counts; one player dying
+        // and respawning doesn't. A received link kills every player from the same hook, so
+        // the kill runs on the game thread. H2 inlines that check, so it hooks what runs on
+        // the edge and gets its tick from the all-dead getter instead.
 
         enum class PostWin { ShellQuit, ClearWonFlag };
 
@@ -47,6 +55,26 @@ namespace haloap {
         enum class ChapterKind {
             TitleIndex,     // (short title_index[, float]): H2, H3, H4 cinematic_set_title
             ReachStringId,  // script fn chud_show_screen_chapter_title (string_id)
+        };
+
+        enum class KillKind {
+            None,
+            UnitKill,   // H2, H3: unit_kill's implementation, (unit)
+            UnitFlags,  // the function H4's and Reach's unit_kill call, (unit, 0, 1, 2, 0)
+        };
+
+        struct DeathDef {
+            // H3, H4, Reach: game_lost(bool), and where in the match its TLS index (rip
+            // disp32), globals slot (imm32) and lost byte (disp32) are
+            const char* lostPattern;
+            int lostTlsAt, lostSlotAt, lostFlagAt;
+            const char* lostEdgePattern;    // H2: runs once the lost byte is set
+            const char* tickPattern;        // H2: players-all-dead getter, called each tick
+            KillKind kill;
+            const char* killPattern;
+            // The players' units: H2 players(), H3 player_get, Reach player_get bodies, or
+            // H4's unit-of-the-n-th-player function
+            const char* playerPattern;
         };
 
         struct GameDef {
@@ -63,6 +91,7 @@ namespace haloap {
             const char* const* maps;    // H2/H3: maps in menu order, for the locked-mission guard
             int mapCount;
             const char* launchPattern;  // H2: the main loop's "launch the pending map" request
+            DeathDef death;
         };
 
         const char* const kH2Maps[] = {
@@ -76,6 +105,12 @@ namespace haloap {
             "070_waste", "100_citadel", "110_hc", "120_halo", "130_epilogue",
         };
 
+        // game_lost(bool) in H3 and Reach, which compile it the same way
+        const char* const kLostPatternH3Reach =
+            "40 53 48 83 EC 20 44 8B 0D ? ? ? ? 45 33 DB BB ? 00 00 00 84 C9 0F 84 ? ? ? ? 65 48 8B "
+            "04 25 58 00 00 00 4E 8B 14 C8 4D 8B 04 1A 45 38 98 ? ? ? ? 0F 85 ? ? ? ? F3 0F 10 05 "
+            "? ? ? ? 41 C6 80 ? ? ? ? 01";
+
         // Patterns and RVAs from Docs/hook-map-h2-h3-h4-reach.md. The map RVAs are for the
         // current MCC build; a wrong one shows up as "[game] ... no map name" in the log.
         const GameDef kGames[] = {
@@ -85,20 +120,46 @@ namespace haloap {
               0x15A0B0C, true, PostWin::ShellQuit,
               { { "ice_cream_flavor_stock", 0, false }, {} },
               kH2Maps, sizeof(kH2Maps) / sizeof(kH2Maps[0]),
-              "B1 01 C6 05 ? ? ? ? 01 E9 ? ? ? ? CC CC 0F B6 05 ? ? ? ? C3" },
+              "B1 01 C6 05 ? ? ? ? 01 E9 ? ? ? ? CC CC 0F B6 05 ? ? ? ? C3",
+              { nullptr, 0, 0, 0,
+                "48 83 EC 28 80 3D ? ? ? ? 00 0F 84 ? ? ? ? 80 3D ? ? ? ? 00 74 ? E8 ? ? ? ?",
+                "48 8B 05 ? ? ? ? 0F B6 40 04 C3",
+                KillKind::UnitKill,
+                "83 F9 FF 74 ? 53 48 83 EC 20 48 8B 05 ? ? ? ? 8B D9 48 8B 50 48 48 85 D2 74 ? "
+                "4C 8D 04 02 EB ? 45 33 C0 0F B7 CB 48 8D 04 49 49 8D 0C 80 E8 ? ? ? ? 8B CB "
+                "66 83 88 ? ? 00 00 20",
+                "48 89 5C 24 08 57 48 83 EC 20 E8 ? ? ? ? 48 8B 0D ? ? ? ? BA FF FF FF FF 8B F8 "
+                "E8 ? ? ? ? 8B D8 83 F8 FF 74 ? 0F 1F 80 00 00 00 00 48 8B 0D ? ? ? ? 48 8B 51 48 "
+                "48 85 D2 74 ? 4C 8D 04 0A EB ? 45 33 C0 0F B7 D3 48 69 C2 ? ? ? ? 42 8B 54 00 ?" } },
             { 3, "halo3.dll",
               "48 83 EC 28 8B 15 ? ? ? ? 45 33 C0", 0, ChapterKind::TitleIndex,
               "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 E8 ? ? ? ? 33 FF",
               0x20A9118, false, PostWin::ShellQuit,
               { { "campaign_metagame_award_primary_skull", 0, true },
                 { "campaign_metagame_award_secondary_skull", 100, true } },
-              kH3Maps, sizeof(kH3Maps) / sizeof(kH3Maps[0]) },
+              kH3Maps, sizeof(kH3Maps) / sizeof(kH3Maps[0]), nullptr,
+              { kLostPatternH3Reach, 9, 17, 49, nullptr, nullptr,
+                KillKind::UnitKill,
+                "48 83 EC 28 83 F9 FF 74 ? 8B 15 ? ? ? ? 65 48 8B 04 25 58 00 00 00 41 B9 ? 00 00 00 "
+                "48 8B 04 D0 0F B7 D1 4E 8B 0C 08 4C 8D 04 52 49 8B 41 48 4A 8B 54 C0 10 83 8A ? ? 00 00 40 E8",
+                "44 8B 08 83 CA FF 65 48 8B 04 25 58 00 00 00 45 8B C3 8B 0D ? ? ? ? 41 BA ? 00 00 00 "
+                "48 8B 04 C8 4D 8B 14 02 45 85 C0 78 ? 45 3B 42 ? 7D ? 41 8B 42 ? 41 0F AF C0 48 63 C8 "
+                "49 03 4A ? 66 44 39 19 74 ? 45 85 C9 74 ? 41 FF C9 41 FF C0 41 83 F8 04 7D ? EB ? 8B 51 ?" } },
             { 4, "halo4.dll",
               "48 83 EC 28 8B 15 ? ? ? ? 45 33 DB 65 48 8B 04 25 58 00 00 00 44 8B D1", 0,
               ChapterKind::TitleIndex,
               "48 83 EC 28 E8 ? ? ? ? 84 C0 74 ? 8B 0D ? ? ? ? 65 48 8B 04 25 58 00 00 00 "
               "BA 40 00 00 00 48 8B 04 C8 48 8B 0C 02",
-              0x2A30268, false, PostWin::ClearWonFlag, {}, nullptr, 0 },
+              0x2A30268, false, PostWin::ClearWonFlag, {}, nullptr, 0, nullptr,
+              { "48 83 EC 28 44 8B 0D ? ? ? ? 45 33 D2 41 BB ? 00 00 00 84 C9 74 ? 65 48 8B 04 25 "
+                "58 00 00 00 4A 8B 14 C8 4D 8B 04 13 45 38 90 ? ? ? ? 75 ? F3 0F 10 05 ? ? ? ? "
+                "41 C6 80 ? ? ? ? 01", 7, 16, 44, nullptr, nullptr,
+                KillKind::UnitFlags,
+                "44 8B 15 ? ? ? ? 65 48 8B 04 25 58 00 00 00 41 BB ? 00 00 00 4A 8B 04 D0 4D 8B 14 03 "
+                "4D 8B 5A 50 44 0F B7 D1 4B 8D 04 52 4D 8B 54 C3 10 41 8B 82 ? ? 00 00 83 C8 20",
+                "48 83 EC 28 E8 ? ? ? ? 44 8B C8 83 C8 FF 44 3B C8 74 ? 8B 15 ? ? ? ? 65 48 8B 0C 25 "
+                "58 00 00 00 41 B8 ? 00 00 00 48 8B 0C D1 4E 8B 04 01 41 0F B7 C9 48 69 D1 ? ? ? ? "
+                "49 8B 40 ? 8B 44 10 ? 48 83 C4 28 C3" } },
             // Reach's chapter pattern is anchored inside the function, on the load of the TLS
             // index before the string_id store
             { 6, "haloreach.dll",
@@ -106,7 +167,15 @@ namespace haloap {
               "4A 8B 14 01 8B CB 89 82 6C 01 00 00", 0x2E, ChapterKind::ReachStringId,
               "48 83 EC 28 44 8B D2 E8 ? ? ? ? 84 C0 74 ? 8B 0D ? ? ? ? 65 48 8B 04 25 58 00 00 00 "
               "BA 48 00 00 00",
-              0x274DD70, false, PostWin::ClearWonFlag, {}, nullptr, 0 },
+              0x274DD70, false, PostWin::ClearWonFlag, {}, nullptr, 0, nullptr,
+              { kLostPatternH3Reach, 9, 17, 49, nullptr, nullptr,
+                KillKind::UnitFlags,
+                "48 89 5C 24 08 57 44 8B 15 ? ? ? ? 65 48 8B 04 25 58 00 00 00 BB ? 00 00 00 8B F9 "
+                "4A 8B 04 D0 44 0F B7 D1 48 8B 1C 18 4F 8D 1C 52 48 8B 43 50 4E 8B 54 D8 10 "
+                "41 8B 82 ? ? 00 00 83 C8 20",
+                "8B 08 E8 ? ? ? ? 83 CA FF 3B C2 74 ? 8B 15 ? ? ? ? 65 48 8B 0C 25 58 00 00 00 "
+                "41 B8 ? 00 00 00 48 8B 0C D1 4E 8B 04 01 0F B7 C8 48 69 D1 ? ? ? ? 49 8B 40 ? "
+                "8B 54 10 ?" } },
         };
         constexpr int kGameCount = sizeof(kGames) / sizeof(kGames[0]);
 
@@ -118,6 +187,24 @@ namespace haloap {
         // How long after a win a launch request is still taken as the win's move to the
         // next mission (H2's ending cinematic can run before it)
         constexpr ULONGLONG kLaunchBlockMs = 120000;
+
+        // Where the players' unit handles are, parsed from the playerPattern match
+        struct PlayerLookup {
+            bool ok = false;
+            // H3, Reach: the players array is at [[TLS block][slot]]
+            const uint32_t* tlsIndex = nullptr;
+            uint32_t slot = 0;
+            // H2: the players array is at [global]; its next-datum iterator
+            uint8_t** global = nullptr;
+            int32_t (*next)(void* array, int32_t index) = nullptr;
+            // Reach: index of the n-th player; H4: the n-th player's unit
+            int32_t (*indexOf)(int32_t n) = nullptr;
+            uint32_t (*unitOf)(int32_t n) = nullptr;
+            // H3: header fields; the datum size, and the unit handle in the datum
+            uint8_t countAt = 0, sizeAt = 0, dataAt = 0;
+            uint32_t size = 0;
+            uint8_t unitAt = 0;
+        };
 
         struct GameState {
             HMODULE module = nullptr;
@@ -148,6 +235,17 @@ namespace haloap {
             void* launchTarget = nullptr;
             void* launchOriginal = nullptr;
             std::atomic<ULONGLONG> blockLaunchUntil{ 0 };
+
+            // Death Link. The lost byte is at [[TLS block][lostSlot]] + lostFlag.
+            void* lostTarget = nullptr;
+            void* lostOriginal = nullptr;
+            void* tickTarget = nullptr;
+            void* tickOriginal = nullptr;
+            const uint32_t* lostTlsIndex = nullptr;
+            uint32_t lostSlot = 0;
+            uint32_t lostFlag = 0;
+            void* killFn = nullptr;
+            PlayerLookup player;
         };
 
         GameState g_state[kGameCount];
@@ -442,6 +540,248 @@ namespace haloap {
             return nullptr;
         }
 
+        // ---- Death Link ----
+
+        constexpr uint32_t kNone = 0xFFFFFFFF;
+
+        // The lost byte (H3, H4, Reach); runs on the game thread
+        bool ReadLostFlag(int gi)
+        {
+            const GameState& st = g_state[gi];
+            if (!st.lostTlsIndex) return false;
+            __try
+            {
+                uint8_t** tlsArray = (uint8_t**)__readgsqword(0x58);
+                uint8_t* globals = *(uint8_t**)(tlsArray[*st.lostTlsIndex] + st.lostSlot);
+                return globals && globals[st.lostFlag] != 0;
+            }
+            __except (1) { return false; }
+        }
+
+        constexpr int kMaxPlayers = 4;
+
+        // Every player's unit handle (kNone for a dead player); returns how many players
+        // there are. Runs on the game thread.
+        int PlayerUnits(int gi, uint32_t units[kMaxPlayers])
+        {
+            const PlayerLookup& p = g_state[gi].player;
+            if (!p.ok) return 0;
+            int n = 0;
+            __try
+            {
+                if (p.global)  // H2
+                {
+                    uint8_t* players = *p.global;
+                    if (!players) return 0;
+                    int64_t dataOffset = *(int64_t*)(players + 0x48);
+                    if (!dataOffset) return 0;
+                    for (int32_t index = p.next(players, -1); index != -1 && n < kMaxPlayers;
+                         index = p.next(players, index))
+                        units[n++] = *(uint32_t*)(players + dataOffset + (index & 0xFFFF) * p.size + p.unitAt);
+                    return n;
+                }
+
+                if (p.unitOf)  // H4: like player_get n; NONE for a missing or a dead player
+                {
+                    for (; n < kMaxPlayers; n++)
+                        units[n] = p.unitOf(n);
+                    return n;
+                }
+
+                uint8_t** tlsArray = (uint8_t**)__readgsqword(0x58);
+                uint8_t* players = *(uint8_t**)(tlsArray[*p.tlsIndex] + p.slot);
+                if (!players) return 0;
+                if (p.indexOf)  // Reach: the n-th player, like player_get n
+                {
+                    uint8_t* data = *(uint8_t**)(players + p.dataAt);
+                    for (int32_t index; n < kMaxPlayers && (index = p.indexOf(n)) != -1;)
+                        units[n++] = *(uint32_t*)(data + (index & 0xFFFF) * p.size + p.unitAt);
+                    return n;
+                }
+
+                // H3: the datums in use, like player_get
+                int32_t count = *(int32_t*)(players + p.countAt);
+                int32_t size = *(int32_t*)(players + p.sizeAt);
+                uint8_t* data = *(uint8_t**)(players + p.dataAt);
+                for (int i = 0; i < count && i < kMaxPlayers; i++)
+                {
+                    uint8_t* datum = data + i * size;
+                    if (*(uint16_t*)datum != 0)
+                        units[n++] = *(uint32_t*)(datum + p.unitAt);
+                }
+            }
+            __except (1) {}
+            return n;
+        }
+
+        // Kills every player (in co-op a link is a full loss, as only that sends one) the
+        // way the game's unit_kill script does; runs on the game thread
+        bool KillPlayers(int gi)
+        {
+            const GameState& st = g_state[gi];
+            const char* dll = kGames[gi].dll;
+            if (!st.killFn)
+            {
+                printf("[deathlink] %s: no way to kill the player, dropped\n", dll);
+                return false;
+            }
+            uint32_t units[kMaxPlayers];
+            int count = PlayerUnits(gi, units);
+            int killed = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (units[i] == kNone) continue;
+                __try
+                {
+                    if (kGames[gi].death.kill == KillKind::UnitFlags)
+                        ((void (*)(uint32_t, bool, bool, uint32_t, uint8_t))st.killFn)(units[i], false, true, 2, 0);
+                    else
+                        ((void (*)(uint32_t))st.killFn)(units[i]);
+                    killed++;
+                }
+                __except (1) { printf("[deathlink] %s: kill faulted\n", dll); }
+            }
+            if (!killed)
+                printf("[deathlink] %s: no living player, dropped\n", dll);
+            return killed > 0;
+        }
+
+        // Takes a pending link and applies it, unless the player is already dead
+        void ApplyDeathLink(int gi, bool alreadyDead)
+        {
+            if (!TakeDeathLinkKill()) return;
+            if (alreadyDead)
+                printf("[deathlink] %s: player already dead, dropped\n", kGames[gi].dll);
+            else if (KillPlayers(gi))
+                NoteDeathLinkKill(kGames[gi].code);
+        }
+
+        // H3, H4, Reach: game_lost(bool all_players_dead)
+        template <int GI>
+        uint64_t DetourLost(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
+        {
+            bool before = ReadLostFlag(GI);
+            ApplyDeathLink(GI, before || (uint8_t)a != 0);
+            auto original = (Passthrough4Fn)g_state[GI].lostOriginal;
+            uint64_t result = original ? original(a, b, c, d) : 0;
+            if (!before && ReadLostFlag(GI))
+                ReportDeath(g_pipe, kGames[GI].code);
+            return result;
+        }
+
+        // H2: runs once the lost byte is set
+        template <int GI>
+        uint64_t DetourLostEdge(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
+        {
+            ReportDeath(g_pipe, kGames[GI].code);
+            auto original = (Passthrough4Fn)g_state[GI].lostOriginal;
+            return original ? original(a, b, c, d) : 0;
+        }
+
+        // H2: players-all-dead getter, the tick a link is applied from
+        template <int GI>
+        uint64_t DetourTick(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
+        {
+            auto original = (Passthrough4Fn)g_state[GI].tickOriginal;
+            uint64_t result = original ? original(a, b, c, d) : 0;
+            ApplyDeathLink(GI, (uint8_t)result != 0);
+            return result;
+        }
+
+        void* const kLostDetours[] = { (void*)&DetourLost<0>, (void*)&DetourLost<1>,
+                                       (void*)&DetourLost<2>, (void*)&DetourLost<3> };
+        void* const kLostEdgeDetours[] = { (void*)&DetourLostEdge<0>, (void*)&DetourLostEdge<1>,
+                                           (void*)&DetourLostEdge<2>, (void*)&DetourLostEdge<3> };
+        void* const kTickDetours[] = { (void*)&DetourTick<0>, (void*)&DetourTick<1>,
+                                       (void*)&DetourTick<2>, (void*)&DetourTick<3> };
+
+        // The address a rip-relative disp32 at match + at points to
+        template <typename T>
+        T* RipTarget(uint8_t* match, int at)
+        {
+            return (T*)(match + at + 4 + *(int32_t*)(match + at));
+        }
+
+        bool Hook(const char* what, const char* dll, void* target, void* detour, void** original);
+
+        void InstallDeathLink(int gi, HMODULE module)
+        {
+            const GameDef& def = kGames[gi];
+            const DeathDef& dd = def.death;
+            GameState& st = g_state[gi];
+
+            if (dd.lostPattern)
+            {
+                uint8_t* lost = (uint8_t*)FindPatternInModule(module, dd.lostPattern);
+                if (!lost)
+                    printf("[game] %s: game_lost pattern not found; deaths won't be sent\n", def.dll);
+                else if (Hook("game_lost", def.dll, lost, kLostDetours[gi], &st.lostOriginal))
+                {
+                    st.lostTarget = lost;
+                    st.lostTlsIndex = RipTarget<const uint32_t>(lost, dd.lostTlsAt);
+                    st.lostSlot = *(uint32_t*)(lost + dd.lostSlotAt);
+                    st.lostFlag = *(uint32_t*)(lost + dd.lostFlagAt);
+                }
+            }
+            if (dd.lostEdgePattern)
+            {
+                void* edge = FindPatternInModule(module, dd.lostEdgePattern);
+                if (!edge)
+                    printf("[game] %s: game-lost pattern not found; deaths won't be sent\n", def.dll);
+                else if (Hook("game-lost", def.dll, edge, kLostEdgeDetours[gi], &st.lostOriginal))
+                    st.lostTarget = edge;
+            }
+            if (dd.tickPattern)
+            {
+                void* tick = FindPatternInModule(module, dd.tickPattern);
+                if (!tick)
+                    printf("[game] %s: all-dead pattern not found; links can't kill\n", def.dll);
+                else if (Hook("all-dead", def.dll, tick, kTickDetours[gi], &st.tickOriginal))
+                    st.tickTarget = tick;
+            }
+
+            if (dd.killPattern)
+                st.killFn = FindPatternInModule(module, dd.killPattern);
+            uint8_t* p = dd.playerPattern ? (uint8_t*)FindPatternInModule(module, dd.playerPattern) : nullptr;
+            PlayerLookup& pl = st.player;
+            if (p && def.code == 2)
+            {
+                pl.global = RipTarget<uint8_t*>(p, 18);
+                pl.next = (int32_t (*)(void*, int32_t))RipTarget<uint8_t>(p, 30);
+                pl.size = *(uint32_t*)(p + 79);
+                pl.unitAt = p[87];
+                pl.ok = true;
+            }
+            else if (p && def.code == 4)
+            {
+                pl.unitOf = (uint32_t (*)(int32_t))p;
+                pl.ok = true;
+            }
+            else if (p && dd.kill == KillKind::UnitFlags)  // Reach
+            {
+                pl.indexOf = (int32_t (*)(int32_t))RipTarget<uint8_t>(p, 3);
+                pl.tlsIndex = RipTarget<const uint32_t>(p, 16);
+                pl.slot = *(uint32_t*)(p + 31);
+                pl.size = *(uint32_t*)(p + 49);
+                pl.dataAt = p[56];
+                pl.unitAt = p[60];
+                pl.ok = true;
+            }
+            else if (p)  // H3
+            {
+                pl.tlsIndex = RipTarget<const uint32_t>(p, 20);
+                pl.slot = *(uint32_t*)(p + 26);
+                pl.countAt = p[46];
+                pl.sizeAt = p[52];
+                pl.dataAt = p[63];
+                pl.unitAt = p[91];
+                pl.ok = true;
+            }
+            if (dd.kill != KillKind::None && (!st.killFn || !pl.ok))
+                printf("[game] %s: %s not found; links can't kill\n", def.dll,
+                       st.killFn ? "player lookup" : "unit_kill");
+        }
+
         // Hooks on a DLL that was unloaded can't be disabled (the memory is gone), so
         // they're removed once the DLL is back. Only when it's back at the same base:
         // removing writes the saved original bytes, which then match. At a different base
@@ -562,6 +902,12 @@ namespace haloap {
             DropHook(st.skullTarget[1], st.skullOriginal[1], sameModule);
             DropHook(st.shellTarget, st.shellOriginal, sameModule);
             DropHook(st.launchTarget, st.launchOriginal, sameModule);
+            DropHook(st.lostTarget, st.lostOriginal, sameModule);
+            DropHook(st.tickTarget, st.tickOriginal, sameModule);
+            st.lostTlsIndex = nullptr;
+            st.lostSlot = st.lostFlag = 0;
+            st.killFn = nullptr;
+            st.player = PlayerLookup{};
             st.blockLaunchUntil.store(0);
             st.hookedModule = module;
             st.engineGlobal = nullptr;
@@ -615,6 +961,8 @@ namespace haloap {
                     st.launchTarget = launch;
             }
 
+            InstallDeathLink(gi, module);
+
             for (int k = 0; k < 2; k++)
             {
                 if (!def.skulls[k].name) continue;
@@ -655,7 +1003,8 @@ namespace haloap {
         bool HooksWereReset(const GameState& st)
         {
             const void* targets[] = { st.chapterTarget, st.wonTarget, st.skullTarget[0],
-                                      st.skullTarget[1], st.shellTarget, st.launchTarget };
+                                      st.skullTarget[1], st.shellTarget, st.launchTarget,
+                                      st.lostTarget, st.tickTarget };
             for (const void* target : targets)
             {
                 if (!target) continue;

@@ -74,6 +74,8 @@ class MCCWorld(World):
             "skulls_required": self.options.skulls_required.value,
             "h2_skull_pickups": self.options.h2_skull_pickups.value,
             "h3_skull_pickups": self.options.h3_skull_pickups.value,
+            "death_link": self.options.death_link.value,
+            "death_link_amnesty": self.options.death_link_amnesty.value,
         }
 
     # Universal Tracker: hands the slot data back to generate_early as re_gen_passthrough
