@@ -25,6 +25,24 @@ Reads every CE campaign map: each cutscene title's index (what the chapter hook 
 its text, the scripts that show it, and whether that's inside a skippable cutscene.
 `--check` compares the result with `HaloAP_launcher/Data/chapter_map.h`.
 
+## Which chapters can actually be seen (no game)
+
+```
+python3 tools/chapter_audit.py [--game ce|h2a|h3|reach|h4] [-v]
+```
+
+Reads the mission scripts from the official editing kits (HCEEK, H2EK, H3EK, H4EK, HREK in
+the Steam library; extracted once into `~/.cache/haloap/kits`). For every chapter location
+it finds the script that shows the card and follows the scripts that start it back to
+mission start, so it can tell whether the card is shown on every playthrough, only on some
+difficulties or solo, only if a cutscene isn't skipped, or never. `-v` prints the script
+path. Halo 4 only runs with `--game h4`: its kit scripts differ from the shipped game.
+
+Findings on 2026-10-13: H3 The Storm "Think Big" is never shown (the Scarab card is
+"Judgment"); CE "Reveille" is solo Normal only; H2 Gravemind's last three cards are never
+started in the kit's scripts (unconfirmed in game); six cards are in skippable cutscenes.
+Chapters a player can miss are still sent when the mission is won.
+
 ## Hooks in the game (one mission load)
 
 Run the launcher with `HALOAP_DEBUG=1`, load any mission, and type in the launcher window:

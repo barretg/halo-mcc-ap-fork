@@ -167,7 +167,7 @@ Only the `title_N` indices below are chapters.
 | `010_jungle` | 0: Walk It Off, 1: Charlie Foxtrot, 2: Quid Pro Quo |
 | `020_base` | 0: Know Your Role..., 1: Gift with Purchase, 2: Last One Out, Get the Lights |
 | `030_outskirts` | 0: Full Contact Safari, 1: The Broken Path |
-| `040_voi` | 0: Ghost Town, 1: Think Big, 2: Judgment |
+| `040_voi` | 0: Ghost Town, 2: Judgment (1, Think Big, is a cut title no script shows) |
 | `050_floodvoi` | 0: It Followed Me Home, 1: Shadow of Intent, 2: Infinite Devil Machine |
 | `070_waste` | 0: Installation 00, 1: Forward Unto Dawn, 2: Real Men Don't Read Maps |
 | `100_citadel` | 0: Trident, 1: If You Want it Done Right..., 2: Journey's End, 3: Revelation |
