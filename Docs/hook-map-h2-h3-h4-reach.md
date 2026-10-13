@@ -185,7 +185,7 @@ the menu instead (tested live 2026-09-28 by patching memory at the win):
 | Game | How MCC decides | Return to the menu by |
 |---|---|---|
 | H2 | the game advances itself after `game_won` (won byte at `[globals+0x1818]`, globals pointer at `halo2+0xE80A78`; clearing it doesn't help) | replacing the next engine shell command with the quit sequence |
-| H3 | `game_won` notifies MCC directly (`host->vfunc[0x18](2)`) and sets a flag (`halo3+0x21A159D`); each frame, `halo3+0x12E584` sees the flag and, in a campaign, calls the campaign advance `halo3+0x12EBC4`, which asks MCC for the next mission (`host->vfunc[0x80]`) and starts it, returning true. Clearing the won byte (`[TLS+0x48]+0xFB80`) doesn't help, and no shell command or level load (engine slot 9) is involved | making the advance return false once after the win, so the game ends instead (found statically 2026-10-13, untested); the quit is sent as well |
+| H3 | `game_won` notifies MCC directly (`host->vfunc[0x18](2)`) and sets a flag (`halo3+0x21A159D`); each frame, `halo3+0x12E584` sees the flag and, in a campaign, calls the campaign advance `halo3+0x12EBC4`, which asks MCC for the next mission (`host->vfunc[0x80]`) and starts it, returning true. Clearing the won byte (`[TLS+0x48]+0xFB80`) doesn't help, and no shell command or engine slot 9 call (which is the HS console queue, not a level load) is involved | making the advance return false once after the win, so the game ends instead (found statically 2026-10-13, untested); the quit is sent as well |
 | H4 | the won byte `[TLS+0x40]+0x2CF60`, read after the game ends (`+0x9CDF0`) | clearing the won byte after the win function returns |
 | Reach | the won byte `[TLS+0x48]+0x1EAC0`, read after the game ends (`+0x59330`) | same as H4 |
 

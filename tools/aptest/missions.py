@@ -21,8 +21,8 @@ _levels = importlib.import_module("data.levels")
 GAME_CODE = {"ce": 1, "h2a": 2, "h3": 3, "h4": 4, "reach": 6}
 GAME_NAME = {"ce": "Halo CE", "h2a": "Halo 2", "h3": "Halo 3", "h4": "Halo 4", "reach": "Halo Reach"}
 
-# The level path each engine's level load takes (see DebugLoadLevel in the DLL). Only
-# CE's has been seen in use; the others are what each game's own paths look like.
+# Each game's level path, as the fake DLL reports a CE mission load (MISSION_LOAD) with
+# it. Only CE's has been seen in use; the others are what each game's own paths look like.
 LOAD_PATH = {
     "ce": "levels\\{0}\\{0}",
     "h2a": "scenarios\\solo\\{0}\\{0}",

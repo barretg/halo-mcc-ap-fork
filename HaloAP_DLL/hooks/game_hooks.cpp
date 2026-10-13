@@ -1265,47 +1265,56 @@ namespace haloap {
         }
     }
 
-    bool DebugLoadLevel(const std::string& path)
+    namespace
     {
         // In a mission only the running game's DLL is loaded
-        static const char* const kDlls[] = { "halo1.dll", "halo2.dll", "halo3.dll", "halo4.dll", "haloreach.dll" };
-        HMODULE module = nullptr;
-        int loaded = 0;
-        for (const char* dll : kDlls)
-            if (HMODULE m = GetModuleHandleA(dll)) { module = m; loaded++; }
-        if (loaded != 1)
+        HMODULE RunningGameModule()
         {
-            DebugReport("load: not in a mission");
+            static const char* const kDlls[] = { "halo1.dll", "halo2.dll", "halo3.dll", "halo4.dll", "haloreach.dll" };
+            HMODULE module = nullptr;
+            int loaded = 0;
+            for (const char* dll : kDlls)
+                if (HMODULE m = GetModuleHandleA(dll)) { module = m; loaded++; }
+            return loaded == 1 ? module : nullptr;
+        }
+    }
+
+    bool DebugRunScript(const std::string& expression)
+    {
+        HMODULE module = RunningGameModule();
+        if (!module)
+        {
+            DebugReport("hs: not in a mission");
             return false;
         }
         void** global = FindEngineGlobal(module);
-        // The engine copies the path (CE strdups it); keep ours alive anyway
-        static std::string s_path;
-        s_path = path;
+        // The engine strdups the line; keep ours alive anyway
+        static std::string s_line;
+        s_line = "HS: " + expression;
         __try
         {
             void* engine = global ? *global : nullptr;
-            void* load = engine ? (*(void***)engine)[9] : nullptr;
-            if (!load || !InModule(module, load))
+            void* queue = engine ? (*(void***)engine)[9] : nullptr;
+            if (!queue || !InModule(module, queue))
             {
-                DebugReport("load: engine not found");
+                DebugReport("hs: engine not found");
                 return false;
             }
-            // Around the post-win block (DetourLevelLoad), which this isn't
+            // Around DetourLevelLoad's post-win block, which this isn't
             for (int gi = 0; gi < kGameCount; gi++)
                 if (g_state[gi].module == module && g_state[gi].levelLoadOriginal)
                 {
                     g_state[gi].replaceUntil.store(0);
-                    load = g_state[gi].levelLoadOriginal;
+                    queue = g_state[gi].levelLoadOriginal;
                 }
-            ((void (*)(void*, const char*))load)(engine, s_path.c_str());
+            ((void (*)(void*, const char*))queue)(engine, s_line.c_str());
         }
         __except (1)
         {
-            DebugReport("load: faulted");
+            DebugReport("hs: faulted");
             return false;
         }
-        DebugReport("load: %s requested", path.c_str());
+        DebugReport("hs: %s queued", expression.c_str());
         return true;
     }
 

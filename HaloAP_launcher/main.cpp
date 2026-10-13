@@ -317,7 +317,7 @@ int main() {
 		std::cout << "Debug commands (in a mission):\n"
 		          << "  /title <n>   show chapter title <n> (Reach: its string_id)\n"
 		          << "  /win         win the mission\n"
-		          << "  /load <path> load a level, e.g. levels\\a50\\a50 (experimental)\n"
+		          << "  /hs <expr>   run a script expression, e.g. (map_reset)\n"
 		          << "  /deathlink   receive a Death Link\n\n";
 	}
 
@@ -338,7 +338,7 @@ int main() {
 			if (!debugCommands || line.empty() || line[0] != '/') break;
 			if (line == "/deathlink")
 				pipe.Send("DEATHLINK: HaloAP debug");
-			else if (line == "/win" || line.rfind("/title ", 0) == 0 || line.rfind("/load ", 0) == 0)
+			else if (line == "/win" || line.rfind("/title ", 0) == 0 || line.rfind("/hs ", 0) == 0)
 				pipe.Send("DEBUG: " + line.substr(1));
 			else
 				std::cout << "unknown command: " << line << "\n";

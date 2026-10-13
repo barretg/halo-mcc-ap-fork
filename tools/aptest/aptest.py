@@ -7,9 +7,9 @@ Access item, gets the mission loaded, sends the scenario's debug commands (/titl
 once it's running, and reports the checks that arrive. You give the verdict here;
 scenarios with nothing to look at pass or fail by themselves.
 
-Missions load by themselves when the game being tested is already in a mission (the
-DLL asks the engine to load the next one, see DebugLoadLevel); otherwise the harness
-says which mission to start from the menu.
+The harness says which mission to start from the menu. MCC's builds stub out the
+games' own map-launch script functions (map_name, game_start), so nothing in a game can
+load another mission; see Docs/testing.md.
 
 Typed here:
     next               the next open scenario (no verdict yet, or failed in an earlier run)
@@ -18,9 +18,8 @@ Typed here:
     redo / prev / go <n> / info / status / list [text]
     groups / group <name>
     give <item>        send an item from the server
-    load               try the automatic mission load again
     clear [yes]        drop this group's verdicts (kept in results_cleared.txt)
-    /<command>         to the launcher: /title <n>, /win, /load <path>, /deathlink
+    /<command>         to the launcher: /title <n>, /win, /hs <expr>, /deathlink
     quit
 
 Usage (Archipelago's venv python, see tools/ap_local.py):
@@ -82,7 +81,6 @@ game: {GAME}
   death_link_amnesty: 0
 """
 
-LOAD_TIMEOUT = 90       # seconds for an automatic load to show the mission starting
 COMMAND_GAP = 4         # seconds between a scenario's commands
 
 
@@ -166,22 +164,12 @@ class FakeMission:
         self.proc.stdin.flush()
 
     def _read(self) -> None:
-        codes = {v: k for k, v in mission_data.GAME_CODE.items()}
         for line in self.proc.stdout:
             line = line.rstrip("\n")
             if not line.startswith("<< DEBUG: "):
                 continue
             cmd = line[len("<< DEBUG: "):]
-            if cmd.startswith("load "):
-                path = cmd[5:]
-                game = next((g for g, fmt in mission_data.LOAD_PATH.items()
-                             if re.fullmatch(re.escape(fmt.split("{0}")[0]) + r"[^\\]+\\[^\\]+", path)), None)
-                name = path.split("\\")[-1]
-                code = mission_data.GAME_CODE[game] if game else 1
-                self.map = (code, name)
-                self.send(f"DEBUG_RESULT: load: {path} requested")
-                self.send(f"MISSION_LOAD: path='{path}'" if code == 1 else f"G_START:{code}:{name}")
-            elif not self.map:
+            if not self.map:
                 self.send("DEBUG_RESULT: not in a mission in time, dropped")
             elif cmd.startswith("title "):
                 code, name = self.map
@@ -233,7 +221,6 @@ class Harness:
         self.connected = False
         self.seen: set[int] = set()        # checks since the scenario started
         self.given: set[str] = set()       # items sent this session
-        self.load_requested_at = 0.0
         self.waiting_for_mission = False
         self.pending_commands: list[str] = []
         self.next_command_at = 0.0
@@ -301,8 +288,6 @@ class Harness:
 
     def on_debug_result(self, text: str) -> None:
         self.tell(f"[aptest] DLL: {text}")
-        if text.startswith("load: ") and not text.endswith("requested") and self.waiting_for_mission:
-            self.ask_manual_load()
 
     def on_mission(self, code: int, name: str) -> None:
         self.running = (code, name)
@@ -343,10 +328,6 @@ class Harness:
             time.sleep(1)
             with self.lock:
                 now = time.time()
-                if self.waiting_for_mission and self.load_requested_at and \
-                        now - self.load_requested_at > LOAD_TIMEOUT:
-                    self.tell("[aptest] The automatic load didn't start the mission.")
-                    self.ask_manual_load()
                 if self.pending_commands and now >= self.next_command_at:
                     command = self.pending_commands.pop(0)
                     self.tell(f"[aptest] Sending {command}")
@@ -369,23 +350,15 @@ class Harness:
 
     def ask_manual_load(self) -> None:
         s = self.scenario()
-        self.load_requested_at = 0
         if s is not None and self.fake:
             self.game.fake.start(s.mission)
         elif s is not None:
             self.tell(f"[aptest] Start {s.mission.level} from the menu "
                       f"(map {s.mission.map}); the scenario carries on once it's running.")
 
-    def load_mission(self, force: bool = False) -> None:
-        s = self.scenario()
+    def load_mission(self) -> None:
         self.waiting_for_mission = True
-        code = mission_data.GAME_CODE[s.mission.game]
-        if self.running and self.running[0] == code:
-            self.tell(f"[aptest] Loading {s.mission.level}...")
-            self.load_requested_at = time.time()
-            self.launcher(f"/load {s.mission.load_path}")
-        else:
-            self.ask_manual_load()
+        self.ask_manual_load()
 
     # Groups and scenarios
 
@@ -415,7 +388,6 @@ class Harness:
         self.seen = set()
         self.pending_commands = []
         self.commands_done_at = 0
-        self.load_requested_at = 0
         self.tell(f"\n[aptest] {self.group} {index}/{len(self.scenarios) - 1}: {s.title}")
         wanted = list(s.give)
         if s.mission.level not in s.locked:
@@ -560,16 +532,13 @@ class Harness:
                     self.tell(f"[aptest] Now on '{self.group}' ({len(self.scenarios)} scenarios). next to begin.")
             elif verb == "give" and arg:
                 self.give(arg)
-            elif verb == "load":
-                if self.scenario():
-                    self.load_mission()
             elif verb == "clear":
                 self.clear(arg)
             elif verb in ("quit", "exit"):
                 return False
             else:
                 self.tell("[aptest] next, pass, fail <note>, note <text>, redo, prev, go <n>, info, "
-                          "status, list, groups, group <name>, give <item>, load, clear, /<command>, quit")
+                          "status, list, groups, group <name>, give <item>, clear, /<command>, quit")
         return True
 
     def close(self) -> None:

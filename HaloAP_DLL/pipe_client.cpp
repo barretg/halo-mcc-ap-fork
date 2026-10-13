@@ -306,8 +306,8 @@ void PipeClient::HandleMessage(const std::string& message)
     {
         haloap::SetDebugPipe(this);
         const std::string command = message.substr(debugPrefix.size());
-        if (command.rfind("load ", 0) == 0)
-            haloap::DebugLoadLevel(command.substr(5));
+        if (command.rfind("hs ", 0) == 0)
+            haloap::DebugRunScript(command.substr(3));
         else if (!haloap::RequestDebugAction(command))
             haloap::DebugReport("unknown command: %s", message.c_str());
         return;

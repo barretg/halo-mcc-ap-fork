@@ -11,10 +11,13 @@ namespace haloap {
     // See Docs/hook-map-h2-h3-h4-reach.md for where each hook comes from.
     void UpdateGameHooks(PipeClient* pipe);
 
-    // Debug: asks the running game's engine to load a level (its path, e.g.
-    // "levels\\a50\\a50"), through vtable slot 9 of the object CreateGameEngine makes.
-    // That slot queues a level load in CE; in the other games it's assumed to be the same
-    // MCC interface. False if no mission is running.
-    bool DebugLoadLevel(const std::string& path);
+    // Debug: runs a HaloScript expression in the running game, e.g. "(map_reset)".
+    // Vtable slot 9 of the object CreateGameEngine makes queues a console line, which
+    // the engine's command drain runs as script when it starts "HS: " (lines starting
+    // "MPBOT: " go elsewhere, anything else is dropped; halo1+0x954F6). Same in all five
+    // games. False if no mission is running.
+    // Loading a mission this way isn't possible: MCC's builds stub out map_name and
+    // game_start (their handlers just return) in every game.
+    bool DebugRunScript(const std::string& expression);
 
 }  // namespace haloap

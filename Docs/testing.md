@@ -65,6 +65,17 @@ Run the launcher with `HALOAP_DEBUG=1`, load any mission, and type in the launch
 | `/title <n>` | shows chapter title `<n>` (Reach: the chapter's string_id, from `tools/reach_chapter_sids.json`) | all |
 | `/win` | wins the mission | all |
 | `/deathlink` | receives a Death Link | all |
+| `/hs <expr>` | runs a HaloScript expression, e.g. `/hs (map_reset)` | all |
+
+`/hs` goes through engine vtable slot 9 (on the object `CreateGameEngine` makes), which
+queues a console line; the engine's command drain runs lines that start `HS: ` as script
+and drops anything not prefixed (`halo1+0x954F6`). Every game DLL has the `HS: ` prefix.
+
+It can't load a mission: MCC's builds stub out the dev map-launch functions. `map_name`
+(CE, H2, H3, Reach) and `game_start` (H2, H3, Reach) have handlers that only return
+(e.g. `halo1+0xACCF44`, `halo3+0x1065F4`); H4's table wasn't matched but is presumably
+the same. `map_reset` and `game_won` are real. Loading a mission from the harness needs
+MCC's own launch path instead (not mapped yet).
 
 In CE, H2, H3 and H4 they go through the real hooks, so the launcher logs and sends
 whatever the hook would (`[ap] Chapter: ...`, the completion and its chapters, the
@@ -94,12 +105,8 @@ that arrives as expected or unexpected. Verdicts: `pass`, `fail <what happened>`
 (`auto`) pass or fail by themselves. `help` lists the rest. Verdicts go to
 `build/aptest/results.txt`; `next` skips scenarios that already passed.
 
-**Loading missions.** When you're already in a mission of the same game, the harness
-asks the DLL to load the next one through the engine's level-load call (`/load`). That is
-known to exist in CE; for H2, H3, H4 and Reach it's a guess at the same interface and the
-paths are unverified. When it can't (at the menu, another game, or the load doesn't show
-the mission within 90 s), it says which mission to start from the menu and carries on
-once that mission is running.
+**Loading missions.** The harness can't load missions itself (see `/hs` above), so it
+says which mission to start from the menu and carries on once that mission is running.
 
 | Group | What |
 |---|---|
