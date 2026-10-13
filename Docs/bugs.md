@@ -1,5 +1,5 @@
 # Known Bugs
-- Chapters that happen in a skippable cutscene will not send their location if the cutscene is skipped
+- Chapters that happen in a skippable cutscene will not send their location if the cutscene is skipped. They are sent when you complete the mission instead
 - Skull count in mission select does not always reflect the amount of skulls actually enabled. As long as the skull count in the mission is correct you are fine
 
 ## Reporting new bugs

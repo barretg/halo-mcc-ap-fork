@@ -1,4 +1,5 @@
 ﻿#include "chapter_title.h"
+#include "mission_complete.h"
 #include "../minhook/MinHook.h"
 #include "../pattern_scan.h"
 #include "shared/common.h"
@@ -17,11 +18,18 @@ namespace haloap {
         PipeClient* g_pipe = nullptr;
 
         void DetourCinematicSetTitle(uint16_t titleIndex, float duration) {
-            printf("[hook] Chapter title shown: index=%d\n", titleIndex);
+            // The mission is read now rather than taken from the last mission load, which
+            // the launcher can miss (the load hook goes in up to a tick after halo1.dll)
+            const char* mission = ReadCurrentMissionName();
+            printf("[hook] Chapter title shown: mission=%s index=%d\n",
+                mission ? mission : "?", titleIndex);
 
             if (g_pipe && g_pipe->IsConnected()) {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "CHAPTER:%d", titleIndex);
+                char buf[96];
+                if (mission)
+                    snprintf(buf, sizeof(buf), "CHAPTER:%s:%d", mission, titleIndex);
+                else
+                    snprintf(buf, sizeof(buf), "CHAPTER:%d", titleIndex);
                 g_pipe->SendAsync(buf);
             }
 
@@ -45,7 +53,6 @@ namespace haloap {
             return false;
         }
 
-        g_hookTarget = target;
         printf("[hook] (chapter_title) CinematicSetTitle found at %p\n", target);
 
         MH_STATUS status = MH_CreateHook(target, (void*)DetourCinematicSetTitle,
@@ -58,11 +65,20 @@ namespace haloap {
         status = MH_EnableHook(target);
         if (status != MH_OK) {
             printf("[hook] (chapter_title) MH_EnableHook failed: %d\n", status);
+            MH_RemoveHook(target);
             return false;
         }
 
+        // Set only once it's in, so ChapterTitleHookWasReset never sees a failed install
+        g_hookTarget = target;
         printf("[hook] (chapter_title) installed.\n");
         return true;
+    }
+
+    bool ChapterTitleHookWasReset() {
+        if (!g_hookTarget) return false;
+        __try { return *(const uint8_t*)g_hookTarget != 0xE9; }
+        __except (1) { return true; }
     }
 
     void UninstallChapterTitleHook() {

@@ -29,26 +29,6 @@ namespace haloap {
         // Weak reference to the pipe for sending events. Set at install time.
         PipeClient* g_pipe = nullptr;
 
-        // Reads the current mission name from halo1.dll's memory.
-        // Returns a pointer to a static buffer (valid until next call).
-        // Returns nullptr if halo1.dll isn't loaded or the name looks invalid.
-        const char* ReadCurrentMissionName() {
-            HMODULE halo1 = GetModuleHandleA("halo1.dll");
-            if (!halo1) return nullptr;
-
-            const char* namePtr = (const char*)((uint8_t*)halo1 + kCurrentMissionNameOffset);
-
-            // Sanity check: mission names are short ASCII strings like "a10".
-            // If the first byte isn't printable, assume the field is empty/invalid.
-            if (namePtr[0] < 0x20 || namePtr[0] > 0x7E) return nullptr;
-
-            // Copy into a static buffer to avoid lifetime issues.
-            static char buffer[64];
-            strncpy_s(buffer, namePtr, sizeof(buffer) - 1);
-            buffer[sizeof(buffer) - 1] = 0;
-            return buffer;
-        }
-
         // The detour function. Runs in place of the original game_won handler.
         void DetourGameWon(void) {
             // Read mission context.
@@ -68,6 +48,24 @@ namespace haloap {
                 g_originalGameWon();
             }
         }
+    }
+
+    // Reads the current mission name from halo1.dll's memory.
+    const char* ReadCurrentMissionName() {
+        HMODULE halo1 = GetModuleHandleA("halo1.dll");
+        if (!halo1) return nullptr;
+
+        const char* namePtr = (const char*)((uint8_t*)halo1 + kCurrentMissionNameOffset);
+
+        // Sanity check: mission names are short ASCII strings like "a10".
+        // If the first byte isn't printable, assume the field is empty/invalid.
+        if (namePtr[0] < 0x20 || namePtr[0] > 0x7E) return nullptr;
+
+        // Copy into a static buffer to avoid lifetime issues.
+        static thread_local char buffer[64];
+        strncpy_s(buffer, namePtr, sizeof(buffer) - 1);
+        buffer[sizeof(buffer) - 1] = 0;
+        return buffer;
     }
 
     bool InstallMissionCompleteHook(PipeClient* pipe) {

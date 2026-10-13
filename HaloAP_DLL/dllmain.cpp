@@ -466,6 +466,15 @@ namespace
                 lastEngineObj = nullptr;
                 vtableHooksInstalled = false;
             }
+            else if (currentHalo1 && haloap::ChapterTitleHookWasReset())
+            {
+                printf("[monitor] halo1.dll reloaded at the same address. Reinstalling hooks...\n");
+                UninstallHalo1Hooks();
+                UninstallVtableHooks();
+                InstallHalo1Hooks();
+                lastEngineObj = nullptr;
+                vtableHooksInstalled = false;
+            }
 
             if (currentHalo1 && !vtableHooksInstalled)
             {

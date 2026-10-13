@@ -144,7 +144,7 @@ int main() {
 	// 3. Start the pipe server and wait for the DLL to connect.
 	PipeServer pipe;
 	pipe.SetMessageHandler([&apBridge](const std::string& msg) {
-		apBridge.HandleDllMessage(msg);
+		apBridge.QueueDllMessage(msg);
 	});
 
 	if (!pipe.Start()) {

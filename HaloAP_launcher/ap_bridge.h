@@ -7,6 +7,7 @@
 #include <mutex>
 #include <map>
 #include <set>
+#include <vector>
 #include <cstdint>
 
 namespace haloap {
@@ -29,12 +30,21 @@ namespace haloap {
         // Shut down. Safe to call multiple times.
         void Stop();
 
-        // Handle a message from the DLL (forwarded from the pipe).
+        // Queue a message from the DLL (forwarded from the pipe). It's handled on the next
+        // Poll(), so the AP client is only ever used from the poll thread.
+        void QueueDllMessage(const std::string& message);
+
+        // Handle a message from the DLL. Only call from the poll thread.
         // Returns true if the message was recognized and handled.
         bool HandleDllMessage(const std::string& message);
 
-        // Convenience: send a location check. Deduplicates within this session.
+        // Convenience: send a location check. Deduplicates within this session. While the
+        // slot isn't connected the client queues it and sends it on the next connect.
         void SendLocation(int64_t locationId);
+
+        // Sends a mission's chapter (and mission start) locations; on a win, so a card the
+        // hook missed (a skipped cutscene) still counts
+        void SendMissionChapters(int code, int index);
 
         bool IsConnected() const { return m_slotConnected.load(); }
         bool IsSocketConnected() const { return m_socketConnected.load(); }
@@ -98,6 +108,10 @@ namespace haloap {
         
         std::set<int64_t> m_checkedLocations;
         std::mutex m_checkedMutex;
+
+        // DLL messages waiting for the poll thread
+        std::mutex m_dllQueueMutex;
+        std::vector<std::string> m_dllQueue;
     };
 
 }  // namespace haloap

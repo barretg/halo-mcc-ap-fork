@@ -199,6 +199,19 @@ namespace haloap {
         if (m_client) {
             m_client->poll();
         }
+
+        std::vector<std::string> messages;
+        {
+            std::lock_guard<std::mutex> lock(m_dllQueueMutex);
+            messages.swap(m_dllQueue);
+        }
+        for (const auto& message : messages)
+            HandleDllMessage(message);
+    }
+
+    void APBridge::QueueDllMessage(const std::string& message) {
+        std::lock_guard<std::mutex> lock(m_dllQueueMutex);
+        m_dllQueue.push_back(message);
     }
 
     void APBridge::Stop() {
@@ -225,6 +238,7 @@ namespace haloap {
                 << " (" << GetMissionDisplayName(locationId) << ")\n";
 
             SendLocation(locationId);
+            SendMissionChapters(1, MISSION_CODE_TO_INDEX[missionCode]);
         
             if (MISSION_CODE_TO_INDEX[missionCode] == m_finalMission)
                 OnFinalMissionComplete(1);
@@ -250,12 +264,15 @@ namespace haloap {
         const std::string chapterPrefix = "CHAPTER:";
         if (message.rfind(chapterPrefix, 0) == 0)
         {
+            // "CHAPTER:<map>:<index>"; DLLs before 1.4 send "CHAPTER:<index>" and the map
+            // comes from the last MISSION_LOAD
             std::string chapterCode = message.substr(chapterPrefix.size());
-            if (m_mission.empty())
+            if (chapterCode.find(':') == std::string::npos)
             {
-                std::cerr << "[ap] didn't find mission, return to menu and restart mission\n";
+                if (m_mission.empty())
+                    std::cerr << "[ap] didn't find mission, return to menu and restart mission\n";
+                chapterCode = m_mission + ":" + chapterCode;
             }
-            chapterCode = m_mission+":"+chapterCode;
             std::cout << "[ap] chapter " << chapterCode << "\n";
             
             auto& chapters = haloap::GetChapterMap();
@@ -358,6 +375,7 @@ namespace haloap {
             }
             else {
                 std::cout << "[ap] game " << code << " mission complete: " << mission.name << "\n";
+                SendMissionChapters(code, index);
                 auto final = m_finalByGame.find(code);
                 if (final != m_finalByGame.end() && final->second == index)
                     OnFinalMissionComplete(code);
@@ -417,10 +435,10 @@ namespace haloap {
     }
 
     void APBridge::SendLocation(int64_t locationId) {
-        if (!m_slotConnected.load()) {
-            std::cerr << "[ap] can't send location, not connected to slot\n";
-            return;
-        }
+        if (!m_client) return;
+        if (!m_slotConnected.load())
+            std::cerr << "[ap] not connected to the slot, location " << locationId
+                      << " is sent on reconnect\n";
 
         {
             std::lock_guard<std::mutex> lock(m_sentLocationsMutex);
@@ -430,6 +448,7 @@ namespace haloap {
             }
         }
 
+        // Queued by the client while the slot isn't connected
         std::list<int64_t> locs = { locationId };
         m_client->LocationChecks(locs);
         std::cout << "[ap] sent location check: " << locationId << "\n";
@@ -440,6 +459,28 @@ namespace haloap {
             m_checkedLocations.insert(locationId);
         }
         SendCompletionState();
+    }
+
+    void APBridge::SendMissionChapters(int code, int index) {
+        if (code == 1) {
+            const char* map = nullptr;
+            for (const auto& [mapCode, i] : MISSION_CODE_TO_INDEX)
+                if (i == index) map = mapCode.c_str();
+            if (!map) return;
+            const std::string prefix = std::string(map) + ":";
+            for (const auto& [key, chapter] : GetChapterMap())
+                if (key.rfind(prefix, 0) == 0)
+                    SendLocation(chapter.locationId);
+            return;
+        }
+        for (const auto& order : GetGameMissionOrders()) {
+            if (order.code != code || index < 0 || index >= int(order.missions.size())) continue;
+            const MissionDef& mission = order.missions[index];
+            if (mission.startLocationId)
+                SendLocation(mission.startLocationId);
+            for (const auto& chapter : mission.chapters)
+                SendLocation(chapter.locationId);
+        }
     }
 
     // -------- callbacks ---------
@@ -481,6 +522,22 @@ namespace haloap {
             auto checked = m_client->get_checked_locations();
             for (int64_t locId : checked) {
                 m_checkedLocations.insert(locId);
+            }
+        }
+
+        // A check sent while the socket was already down (before the disconnect was seen)
+        // never reached the server; send again whatever this session sent that it lacks
+        {
+            std::list<int64_t> resend;
+            auto missing = m_client->get_missing_locations();
+            {
+                std::lock_guard<std::mutex> lock(m_sentLocationsMutex);
+                for (int64_t locId : m_sentLocations)
+                    if (missing.count(locId)) resend.push_back(locId);
+            }
+            if (!resend.empty()) {
+                std::cout << "[ap] resending " << resend.size() << " location checks\n";
+                m_client->LocationChecks(resend);
             }
         }
         

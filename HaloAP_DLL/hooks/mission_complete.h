@@ -12,4 +12,8 @@ namespace haloap {
     // Uninstalls the hook. Safe to call during shutdown.
     void UninstallMissionCompleteHook();
 
+    // The running CE mission's name ("a10"), or nullptr if halo1.dll isn't loaded or the
+    // name looks invalid. Points to a static buffer, valid until the next call.
+    const char* ReadCurrentMissionName();
+
 }
