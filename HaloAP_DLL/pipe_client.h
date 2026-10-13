@@ -29,6 +29,8 @@ private:
     std::mutex m_sendQueueMutex;
     std::condition_variable m_sendQueueCv;
     std::deque<std::string> m_sendQueue;
+    // Send runs on the sender thread and directly (HELLO); one message at a time
+    std::mutex m_writeMutex;
 
     HANDLE m_pipe = INVALID_HANDLE_VALUE;
     HANDLE m_shutdownEvent = nullptr;

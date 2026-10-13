@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <vector>
 #include <cstdint>
+#include <cstring>
 
 PipeClient::PipeClient() = default;
 
@@ -134,9 +135,12 @@ bool PipeClient::Send(const std::string& message)
         return true;
     };
 
-    if (!writeExact(&length, sizeof(length))) return false;
-    if (!writeExact(message.data(), length)) return false;
-    return true;
+    // Length and message in one write, under the lock, so messages never interleave
+    std::string frame(sizeof(length) + message.size(), '\0');
+    memcpy(frame.data(), &length, sizeof(length));
+    memcpy(frame.data() + sizeof(length), message.data(), message.size());
+    std::lock_guard<std::mutex> lock(m_writeMutex);
+    return writeExact(frame.data(), DWORD(frame.size()));
 }
 
 bool PipeClient::ReadExact(void* buffer, DWORD size)

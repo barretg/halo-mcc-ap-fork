@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <cstring>
 
 PipeServer::PipeServer() = default;
 
@@ -112,9 +113,13 @@ bool PipeServer::Send(const std::string& message) {
         return true;
         };
 
-    if (!writeExact(&length, sizeof(length))) return false;
-    if (!writeExact(message.data(), length)) return false;
-    return true;
+    // Length and message in one write, under the lock: two threads sending at once used to
+    // interleave their bytes, and the DLL then read a length out of the middle of a message
+    std::string frame(sizeof(length) + message.size(), '\0');
+    memcpy(frame.data(), &length, sizeof(length));
+    memcpy(frame.data() + sizeof(length), message.data(), message.size());
+    std::lock_guard<std::mutex> lock(m_sendMutex);
+    return writeExact(frame.data(), DWORD(frame.size()));
 }
 
 bool PipeServer::ReadExact(void* buffer, DWORD size) {

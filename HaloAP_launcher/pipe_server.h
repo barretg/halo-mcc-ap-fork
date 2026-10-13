@@ -5,6 +5,7 @@
 #include <thread>
 #include <string>
 #include <functional>
+#include <mutex>
 
 class PipeServer {
 public:
@@ -31,5 +32,7 @@ private:
     std::thread m_thread;
     std::atomic<bool> m_shutdown{ false };
     std::atomic<bool> m_connected{ false };
+    // Send is called from the AP thread and the console thread; one message at a time
+    std::mutex m_sendMutex;
     MessageHandler m_messageHandler;
 };

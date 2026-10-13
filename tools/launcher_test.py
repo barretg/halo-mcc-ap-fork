@@ -321,6 +321,25 @@ def removed_location_sent_on_load(ctx: Ctx):
 
 
 @test
+def pipe_survives_concurrent_sends(ctx: Ctx):
+    """Console commands and AP-thread messages to the DLL at the same time don't garble the
+    pipe (two threads used to interleave a message's length and body)"""
+    ctx.give("Halo 3: Sierra 117 Access")
+    ctx.give("Halo 3: Crow's Nest Access")
+    chapters = [f"G_CHAPTER:3:{m}:{i}" for m in ("010_jungle", "020_base") for i in range(3)]
+    for i in range(100):
+        ctx.launcher.command(f"/title {i}")
+        if i % 15 == 0 and chapters:
+            ctx.launcher.send(chapters.pop())
+    want = [f"<< DEBUG: title {i}" for i in range(100)]
+    wait_for(lambda: all(w in ctx.launcher.received for w in want), 30)
+    problems = {w for w in want if w not in ctx.launcher.received}
+    if "<< (pipe closed)" in ctx.launcher.received:
+        problems.add("the fake DLL read a garbled message and closed the pipe")
+    return problems
+
+
+@test
 def debug_commands_forwarded(ctx: Ctx):
     """With HALOAP_DEBUG, /title, /win and /deathlink typed in the launcher reach the DLL"""
     want = ["<< DEBUG: title 2", "<< DEBUG: win", "<< DEATHLINK: HaloAP debug"]
