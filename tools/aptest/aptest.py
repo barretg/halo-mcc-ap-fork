@@ -320,7 +320,7 @@ class Harness:
                     self.record("pass", "auto")
                 else:
                     self.tell("[aptest] Every expected check arrived. pass or fail <what was wrong>.")
-        else:
+        elif not again:  # a repeat the launcher skipped (e.g. a card shown again) isn't news
             self.tell(f"[aptest] Unexpected check: {name}")
 
     def ticker(self) -> None:
