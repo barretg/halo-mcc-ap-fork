@@ -12,4 +12,7 @@ namespace haloap {
     // which drops every CE hook
     bool ChapterTitleHookWasReset();
 
+    // Debug (game thread): shows title <index> through the hooked function
+    bool DebugShowTitle(int index);
+
 }  // namespace haloap

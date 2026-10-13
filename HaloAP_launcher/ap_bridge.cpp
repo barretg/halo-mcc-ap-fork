@@ -4,6 +4,7 @@
 #include "Data/mission_order.h"
 #include "shared/common.h"
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <vector>
 #include <set>
@@ -222,6 +223,11 @@ namespace haloap {
     }
 
     bool APBridge::HandleDllMessage(const std::string& message) {
+        // HALOAP_DEBUG: every message, for tools/aptest to follow
+        static const bool echo = std::getenv("HALOAP_DEBUG") != nullptr;
+        if (echo)
+            std::cout << "[dll] " << message << "\n";
+
         const std::string missionCompPrefix = "MISSION_COMPLETE: ";
         if (message.rfind(missionCompPrefix, 0) == 0) {
             std::string missionCode = message.substr(missionCompPrefix.size());

@@ -75,6 +75,12 @@ namespace haloap {
         return true;
     }
 
+    bool DebugShowTitle(int index) {
+        if (!g_hookTarget) return false;
+        ((CinematicSetTitleFn)g_hookTarget)((uint16_t)index, 3.0f);
+        return true;
+    }
+
     bool ChapterTitleHookWasReset() {
         if (!g_hookTarget) return false;
         __try { return *(const uint8_t*)g_hookTarget != 0xE9; }

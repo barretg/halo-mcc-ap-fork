@@ -3,6 +3,7 @@
 #include "../pattern_scan.h"
 #include "../item_handler.h"
 #include "../deathlink.h"
+#include "../debug_commands.h"
 #include <windows.h>
 #include <psapi.h>
 #include <intrin.h>
@@ -92,6 +93,9 @@ namespace haloap {
             int mapCount;
             const char* launchPattern;  // H2: the main loop's "launch the pending map" request
             DeathDef death;
+            // H3: the per-frame step that, after a win, asks MCC for the next mission and
+            // starts it (returns true if it did)
+            const char* advancePattern = nullptr;
         };
 
         const char* const kH2Maps[] = {
@@ -144,7 +148,9 @@ namespace haloap {
                 "48 8B 04 D0 0F B7 D1 4E 8B 0C 08 4C 8D 04 52 49 8B 41 48 4A 8B 54 C0 10 83 8A ? ? 00 00 40 E8",
                 "44 8B 08 83 CA FF 65 48 8B 04 25 58 00 00 00 45 8B C3 8B 0D ? ? ? ? 41 BA ? 00 00 00 "
                 "48 8B 04 C8 4D 8B 14 02 45 85 C0 78 ? 45 3B 42 ? 7D ? 41 8B 42 ? 41 0F AF C0 48 63 C8 "
-                "49 03 4A ? 66 44 39 19 74 ? 45 85 C9 74 ? 41 FF C9 41 FF C0 41 83 F8 04 7D ? EB ? 8B 51 ?" } },
+                "49 03 4A ? 66 44 39 19 74 ? 45 85 C9 74 ? 41 FF C9 41 FF C0 41 83 F8 04 7D ? EB ? 8B 51 ?" },
+              "40 55 48 8D AC 24 B0 00 FF FF B8 50 00 01 00 E8 ? ? ? ? 48 2B E0 48 C7 44 24 60 FE FF FF FF "
+              "48 89 9C 24 78 00 01 00 0F 29 B4 24 40 00 01 00 33 DB" },
             { 4, "halo4.dll",
               "48 83 EC 28 8B 15 ? ? ? ? 45 33 DB 65 48 8B 04 25 58 00 00 00 44 8B D1", 0,
               ChapterKind::TitleIndex,
@@ -188,6 +194,10 @@ namespace haloap {
         // next mission (H2's ending cinematic can run before it)
         constexpr ULONGLONG kLaunchBlockMs = 120000;
 
+        // How long after a win (or a locked mission starting) MCC's next shell command is
+        // replaced with the quit, see GameState::replaceUntil
+        constexpr ULONGLONG kReplaceShellMs = 20000;
+
         // Where the players' unit handles are, parsed from the playerPattern match
         struct PlayerLookup {
             bool ok = false;
@@ -224,6 +234,29 @@ namespace haloap {
             void* shellTarget = nullptr;
             void* shellOriginal = nullptr;
             std::atomic<bool> quitPending{ false };
+            // Until this tick count, MCC's next shell command other than its status ping
+            // (0x5) is replaced with the quit too: a quit sent at the win can land before
+            // MCC moves on to the next mission, which then overrides it
+            std::atomic<ULONGLONG> replaceUntil{ 0 };
+            // The engine's level load (vtable slot 9, as in CE): H3 moves on to the next
+            // mission after a win without a shell command, so a load in that window is
+            // blocked too
+            void* levelLoadTarget = nullptr;
+            void* levelLoadOriginal = nullptr;
+
+            // H3: after a win the campaign-advance step is made to fail once, so the game
+            // ends instead of starting the next mission (DetourAdvance)
+            void* advanceTarget = nullptr;
+            void* advanceOriginal = nullptr;
+            std::atomic<ULONGLONG> blockAdvanceUntil{ 0 };
+
+            // Reach debug commands. Its chapter and win script functions have no separate
+            // implementation to call: the evaluators do the work inline, so /title and /win
+            // do what they do (parsed from the win evaluator, see ParseReachWin)
+            bool (*reachIsCampaign)() = nullptr;    // the win evaluator's first check
+            void (*reachEndGame)() = nullptr;       // ends the game once won
+            uint32_t reachFinishedFlag = 0;         // byte in the globals: the game has ended
+            std::atomic<ULONGLONG> reachTitleClearAt{ 0 };
 
             // ClearWonFlag: the won byte is at [[TLS block][wonSlot]] + wonFlag
             const uint32_t* wonTlsIndex = nullptr;
@@ -387,6 +420,9 @@ namespace haloap {
             {
                 if (g_state[GI].launchTarget)
                     g_state[GI].blockLaunchUntil.store(GetTickCount64() + kLaunchBlockMs);
+                if (g_state[GI].advanceTarget)
+                    g_state[GI].blockAdvanceUntil.store(GetTickCount64() + kLaunchBlockMs);
+                g_state[GI].replaceUntil.store(GetTickCount64() + kReplaceShellMs);
                 if (!SendQuit(GI))
                     g_state[GI].quitPending.store(true);  // sent on the next tick or shell command
             }
@@ -398,7 +434,15 @@ namespace haloap {
         {
             auto original = (ShellCommandFn)g_state[GI].shellOriginal;
             if (!original) return;
-            if (g_state[GI].quitPending.exchange(false))
+            GameState& st = g_state[GI];
+            if (type != 0x5)
+                printf("[game] %s: shell command 0x%x\n", kGames[GI].dll, type);
+            ULONGLONG until = st.replaceUntil.load();
+            bool replace = st.quitPending.exchange(false);
+            if (!replace && type != 0x5 && until && GetTickCount64() < until &&
+                st.replaceUntil.compare_exchange_strong(until, 0))
+                replace = true;
+            if (replace)
             {
                 printf("[game] %s: shell command 0x%x replaced with quit to menu\n", kGames[GI].dll, type);
                 original(engine, 0x0, nullptr);  // pause
@@ -407,6 +451,37 @@ namespace haloap {
                 return;
             }
             original(engine, type, context);
+        }
+
+        typedef void (*LevelLoadFn)(void* engine, const char* path);
+
+        template <int GI>
+        void DetourLevelLoad(void* engine, const char* path)
+        {
+            GameState& st = g_state[GI];
+            printf("[game] %s: level load '%s'\n", kGames[GI].dll, path ? path : "(null)");
+            ULONGLONG until = st.replaceUntil.load();
+            if (until && GetTickCount64() < until && st.replaceUntil.compare_exchange_strong(until, 0))
+            {
+                printf("[game] %s: level load after the win blocked\n", kGames[GI].dll);
+                if (!SendQuit(GI))
+                    st.quitPending.store(true);
+                return;
+            }
+            auto original = (LevelLoadFn)st.levelLoadOriginal;
+            if (original) original(engine, path);
+        }
+
+        void* LevelLoadDetourFor(int gi)
+        {
+            switch (gi)
+            {
+            case 0: return (void*)&DetourLevelLoad<0>;
+            case 1: return (void*)&DetourLevelLoad<1>;
+            case 2: return (void*)&DetourLevelLoad<2>;
+            case 3: return (void*)&DetourLevelLoad<3>;
+            }
+            return nullptr;
         }
 
         template <int GI, int K>
@@ -425,6 +500,22 @@ namespace haloap {
         // Reach's chapter script function stores the string_id at
         // [TLS block + 0x5B0] + 0x16C; a changed, non-zero value after the call is a card
         // going up (the clear call stores 0 or nothing)
+        // Shows a Reach chapter card the way chud_show_screen_chapter_title does (game thread)
+        bool WriteReachChapterSlot(int gi, uint32_t sid)
+        {
+            const uint32_t* tlsIndex = g_state[gi].reachTlsIndex;
+            if (!tlsIndex) return false;
+            __try
+            {
+                uint8_t** tlsArray = (uint8_t**)__readgsqword(0x58);
+                uint8_t* block = tlsArray[*tlsIndex];
+                uint8_t* slot = *(uint8_t**)(block + 0x5B0);
+                *(uint32_t*)(slot + 0x16C) = sid;
+                return true;
+            }
+            __except (1) { return false; }
+        }
+
         uint32_t ReadReachChapterSlot(int gi)
         {
             const uint32_t* tlsIndex = g_state[gi].reachTlsIndex;
@@ -514,6 +605,33 @@ namespace haloap {
             }
             auto original = (LaunchRequestFn)st.launchOriginal;
             if (original) original();
+        }
+
+        // H3's campaign advance; takes no arguments, returns whether it started the next map
+        template <int GI>
+        uint64_t DetourAdvance(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
+        {
+            GameState& st = g_state[GI];
+            ULONGLONG until = st.blockAdvanceUntil.exchange(0);
+            if (until && GetTickCount64() < until)
+            {
+                printf("[game] %s: next mission after the win blocked; the game ends instead\n", kGames[GI].dll);
+                return 0;
+            }
+            auto original = (Passthrough4Fn)st.advanceOriginal;
+            return original ? original(a, b, c, d) : 0;
+        }
+
+        void* AdvanceDetourFor(int gi)
+        {
+            switch (gi)
+            {
+            case 0: return (void*)&DetourAdvance<0>;
+            case 1: return (void*)&DetourAdvance<1>;
+            case 2: return (void*)&DetourAdvance<2>;
+            case 3: return (void*)&DetourAdvance<3>;
+            }
+            return nullptr;
         }
 
         void* LaunchDetourFor(int gi)
@@ -656,10 +774,116 @@ namespace haloap {
                 NoteDeathLinkKill(kGames[gi].code);
         }
 
+        // Runs a pending debug command through the hooked functions (game thread)
+        // Reach's win evaluator, after its campaign check: is the game over already; if
+        // not, set the won byte and end the game. False if it couldn't (not a campaign,
+        // already over, faulted).
+        bool ReachWin(int gi)
+        {
+            GameState& st = g_state[gi];
+            __try
+            {
+                if (!st.reachIsCampaign()) return false;
+                uint8_t** tlsArray = (uint8_t**)__readgsqword(0x58);
+                uint8_t* block = tlsArray[*st.wonTlsIndex];
+                uint8_t* globals = *(uint8_t**)(block + st.wonSlot);
+                if (globals[st.reachFinishedFlag]) return false;
+                globals[st.wonFlag] = 1;
+                st.reachEndGame();
+                return true;
+            }
+            __except (1) { return false; }
+        }
+
+        // "call rel32" at p: its target
+        void* CallTarget(uint8_t* p)
+        {
+            return p + 5 + *(int32_t*)(p + 1);
+        }
+
+        // Reach's game_won evaluator: "call is_campaign", ..., "cmp byte [rcx + finished], 0",
+        // "jne", "mov byte [rcx + won], 1", "call end_game"
+        bool ParseReachWin(uint8_t* fn, GameState& st)
+        {
+            __try
+            {
+                for (int i = 0; i < 0x20 && !st.reachIsCampaign; i++)
+                    if (fn[i] == 0xE8)
+                        st.reachIsCampaign = (bool (*)())CallTarget(fn + i);
+                for (int i = 0; i < 0x50 && !st.reachFinishedFlag; i++)
+                    if (fn[i] == 0x80 && fn[i + 1] == 0xB9 && fn[i + 6] == 0x00)
+                        st.reachFinishedFlag = *(uint32_t*)(fn + i + 2);
+                for (int i = 0; i < 0x50 && !st.reachEndGame; i++)
+                    if (fn[i] == 0xC6 && fn[i + 1] == 0x81 && fn[i + 6] == 0x01 && fn[i + 7] == 0xE8)
+                        st.reachEndGame = (void (*)())CallTarget(fn + i + 7);
+            }
+            __except (1) { return false; }
+            return st.reachIsCampaign && st.reachFinishedFlag && st.reachEndGame &&
+                   InModule(st.module, (void*)st.reachIsCampaign) && InModule(st.module, (void*)st.reachEndGame);
+        }
+
+        void RunDebugAction(int gi)
+        {
+            GameState& st = g_state[gi];
+            const char* dll = kGames[gi].dll;
+
+            // A card /title put up comes down again, as the scripts' clear call does
+            ULONGLONG clearAt = st.reachTitleClearAt.load();
+            if (clearAt && GetTickCount64() >= clearAt && st.reachTitleClearAt.compare_exchange_strong(clearAt, 0))
+                WriteReachChapterSlot(gi, 0);
+
+            int arg = 0;
+            DebugAction action = TakeDebugAction(arg);
+            if (action == DebugAction::None) return;
+            if (action == DebugAction::Title && kGames[gi].chapterKind == ChapterKind::ReachStringId)
+            {
+                // arg: the chapter's runtime string_id (tools/reach_chapter_sids.json)
+                if (!WriteReachChapterSlot(gi, (uint32_t)arg))
+                    DebugReport("%s: chapter slot not found", dll);
+                else
+                {
+                    ReportChapter(gi, (uint32_t)arg);
+                    st.reachTitleClearAt.store(GetTickCount64() + 5000);
+                    DebugReport("%s: title %d shown", dll, arg);
+                }
+            }
+            else if (action == DebugAction::Win && kGames[gi].chapterKind == ChapterKind::ReachStringId)
+            {
+                if (!st.reachEndGame || !st.wonTlsIndex)
+                    DebugReport("%s: win evaluator not parsed", dll);
+                else
+                {
+                    ReportWon(gi);
+                    if (ReachWin(gi))
+                    {
+                        ClearWonFlag(gi);
+                        DebugReport("%s: won", dll);
+                    }
+                    else
+                        DebugReport("%s: not won (no campaign running, or it's over)", dll);
+                }
+            }
+            else if (action == DebugAction::Title)
+            {
+                if (!st.chapterTarget)
+                    DebugReport("%s: chapter hook not installed", dll);
+                else
+                    ((TitleFn)st.chapterTarget)((uint16_t)arg, 3.0f);
+            }
+            else if (action == DebugAction::Win)
+            {
+                if (!st.wonTarget)
+                    DebugReport("%s: mission-won hook not installed", dll);
+                else
+                    ((Passthrough4Fn)st.wonTarget)(0, 0, 0, 0);
+            }
+        }
+
         // H3, H4, Reach: game_lost(bool all_players_dead)
         template <int GI>
         uint64_t DetourLost(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
         {
+            RunDebugAction(GI);
             bool before = ReadLostFlag(GI);
             ApplyDeathLink(GI, before || (uint8_t)a != 0);
             auto original = (Passthrough4Fn)g_state[GI].lostOriginal;
@@ -682,6 +906,7 @@ namespace haloap {
         template <int GI>
         uint64_t DetourTick(uint64_t a, uint64_t b, uint64_t c, uint64_t d)
         {
+            RunDebugAction(GI);
             auto original = (Passthrough4Fn)g_state[GI].tickOriginal;
             uint64_t result = original ? original(a, b, c, d) : 0;
             ApplyDeathLink(GI, (uint8_t)result != 0);
@@ -901,7 +1126,10 @@ namespace haloap {
             DropHook(st.skullTarget[0], st.skullOriginal[0], sameModule);
             DropHook(st.skullTarget[1], st.skullOriginal[1], sameModule);
             DropHook(st.shellTarget, st.shellOriginal, sameModule);
+            DropHook(st.levelLoadTarget, st.levelLoadOriginal, sameModule);
             DropHook(st.launchTarget, st.launchOriginal, sameModule);
+            DropHook(st.advanceTarget, st.advanceOriginal, sameModule);
+            st.blockAdvanceUntil.store(0);
             DropHook(st.lostTarget, st.lostOriginal, sameModule);
             DropHook(st.tickTarget, st.tickOriginal, sameModule);
             st.lostTlsIndex = nullptr;
@@ -912,9 +1140,14 @@ namespace haloap {
             st.hookedModule = module;
             st.engineGlobal = nullptr;
             st.quitPending.store(false);
+            st.replaceUntil.store(0);
             st.wonTlsIndex = nullptr;
             st.wonSlot = st.wonFlag = 0;
             st.reachTlsIndex = nullptr;
+            st.reachIsCampaign = nullptr;
+            st.reachEndGame = nullptr;
+            st.reachFinishedFlag = 0;
+            st.reachTitleClearAt.store(0);
             st.startedMap[0] = 0;
             st.module = module;
 
@@ -944,6 +1177,8 @@ namespace haloap {
             {
                 if (!wonTarget || !ParseWonFlag((uint8_t*)wonTarget, st))
                     printf("[game] %s: won flag not found; a win will load the next mission\n", def.dll);
+                else if (def.chapterKind == ChapterKind::ReachStringId && !ParseReachWin((uint8_t*)wonTarget, st))
+                    printf("[game] %s: win evaluator not parsed; /win won't work\n", def.dll);
             }
             else
             {
@@ -959,6 +1194,15 @@ namespace haloap {
                     printf("[game] %s: launch request pattern not found; a win may load the next mission\n", def.dll);
                 else if (Hook("launch request", def.dll, launch, LaunchDetourFor(gi), &st.launchOriginal))
                     st.launchTarget = launch;
+            }
+
+            if (def.advancePattern)
+            {
+                void* advance = FindPatternInModule(module, def.advancePattern);
+                if (!advance)
+                    printf("[game] %s: campaign advance pattern not found; a win may load the next mission\n", def.dll);
+                else if (Hook("campaign advance", def.dll, advance, AdvanceDetourFor(gi), &st.advanceOriginal))
+                    st.advanceTarget = advance;
             }
 
             InstallDeathLink(gi, module);
@@ -981,11 +1225,13 @@ namespace haloap {
             GameState& st = g_state[gi];
             if (st.shellTarget || !st.engineGlobal) return;
             void* target = nullptr;
+            void* levelLoad = nullptr;
             __try
             {
                 void* engine = *st.engineGlobal;
                 if (!engine) return;
                 target = (*(void***)engine)[3];
+                levelLoad = (*(void***)engine)[9];
             }
             __except (1) { return; }
             if (!InModule(st.module, target)) return;
@@ -993,6 +1239,9 @@ namespace haloap {
                 st.shellTarget = target;
             else
                 st.engineGlobal = nullptr;  // don't retry every tick
+            if (st.shellTarget && levelLoad != target && InModule(st.module, levelLoad) &&
+                Hook("level load", kGames[gi].dll, levelLoad, LevelLoadDetourFor(gi), &st.levelLoadOriginal))
+                st.levelLoadTarget = levelLoad;
         }
     }
 
@@ -1004,6 +1253,7 @@ namespace haloap {
         {
             const void* targets[] = { st.chapterTarget, st.wonTarget, st.skullTarget[0],
                                       st.skullTarget[1], st.shellTarget, st.launchTarget,
+                                      st.levelLoadTarget, st.advanceTarget,
                                       st.lostTarget, st.tickTarget };
             for (const void* target : targets)
             {
@@ -1013,6 +1263,50 @@ namespace haloap {
             }
             return false;
         }
+    }
+
+    bool DebugLoadLevel(const std::string& path)
+    {
+        // In a mission only the running game's DLL is loaded
+        static const char* const kDlls[] = { "halo1.dll", "halo2.dll", "halo3.dll", "halo4.dll", "haloreach.dll" };
+        HMODULE module = nullptr;
+        int loaded = 0;
+        for (const char* dll : kDlls)
+            if (HMODULE m = GetModuleHandleA(dll)) { module = m; loaded++; }
+        if (loaded != 1)
+        {
+            DebugReport("load: not in a mission");
+            return false;
+        }
+        void** global = FindEngineGlobal(module);
+        // The engine copies the path (CE strdups it); keep ours alive anyway
+        static std::string s_path;
+        s_path = path;
+        __try
+        {
+            void* engine = global ? *global : nullptr;
+            void* load = engine ? (*(void***)engine)[9] : nullptr;
+            if (!load || !InModule(module, load))
+            {
+                DebugReport("load: engine not found");
+                return false;
+            }
+            // Around the post-win block (DetourLevelLoad), which this isn't
+            for (int gi = 0; gi < kGameCount; gi++)
+                if (g_state[gi].module == module && g_state[gi].levelLoadOriginal)
+                {
+                    g_state[gi].replaceUntil.store(0);
+                    load = g_state[gi].levelLoadOriginal;
+                }
+            ((void (*)(void*, const char*))load)(engine, s_path.c_str());
+        }
+        __except (1)
+        {
+            DebugReport("load: faulted");
+            return false;
+        }
+        DebugReport("load: %s requested", path.c_str());
+        return true;
     }
 
     void UpdateGameHooks(PipeClient* pipe)
@@ -1076,6 +1370,7 @@ namespace haloap {
                     !GetItemHandler().isMissionAllowed(kGames[gi].code, i))
                 {
                     printf("[game] %s: %s is locked, quitting to the menu\n", kGames[gi].dll, map);
+                    st.replaceUntil.store(GetTickCount64() + kReplaceShellMs);
                     if (!SendQuit(gi))
                         st.quitPending.store(true);
                 }

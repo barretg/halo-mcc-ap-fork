@@ -1,6 +1,8 @@
 #include "pipe_client.h"
 #include "item_handler.h"
 #include "deathlink.h"
+#include "debug_commands.h"
+#include "hooks/game_hooks.h"
 #include "hooks/skull_hook.h"
 #include "shared/common.h"
 #include <cstdio>
@@ -292,6 +294,18 @@ void PipeClient::HandleMessage(const std::string& message)
     if (message.rfind(deathLinkPrefix, 0) == 0)
     {
         haloap::RequestDeathLinkKill(message.substr(deathLinkPrefix.size()));
+        return;
+    }
+
+    const std::string debugPrefix = "DEBUG: ";
+    if (message.rfind(debugPrefix, 0) == 0)
+    {
+        haloap::SetDebugPipe(this);
+        const std::string command = message.substr(debugPrefix.size());
+        if (command.rfind("load ", 0) == 0)
+            haloap::DebugLoadLevel(command.substr(5));
+        else if (!haloap::RequestDebugAction(command))
+            haloap::DebugReport("unknown command: %s", message.c_str());
         return;
     }
 

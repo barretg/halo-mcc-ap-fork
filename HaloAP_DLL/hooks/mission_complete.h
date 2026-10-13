@@ -16,4 +16,7 @@ namespace haloap {
     // name looks invalid. Points to a static buffer, valid until the next call.
     const char* ReadCurrentMissionName();
 
+    // Debug (game thread): wins the mission through the hooked game_won
+    bool DebugWinMission();
+
 }

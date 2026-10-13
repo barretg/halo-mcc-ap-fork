@@ -2,6 +2,9 @@
 #include "../minhook/MinHook.h"
 #include "../pattern_scan.h"
 #include "../deathlink.h"
+#include "../debug_commands.h"
+#include "chapter_title.h"
+#include "mission_complete.h"
 #include <cstdio>
 #include <cstdint>
 
@@ -94,8 +97,23 @@ namespace haloap {
             return killed > 0;
         }
 
+        void RunDebugAction()
+        {
+            if (!ReadCurrentMissionName()) return;  // not in a mission
+            int arg = 0;
+            bool ok = true;
+            switch (TakeDebugAction(arg))
+            {
+            case DebugAction::Title: ok = DebugShowTitle(arg); break;
+            case DebugAction::Win: ok = DebugWinMission(); break;
+            default: return;
+            }
+            DebugReport("halo1.dll: %s", ok ? "done" : "hook not installed");
+        }
+
         void DetourUpdate()
         {
+            RunDebugAction();
             bool before = LatchSet();
             if (TakeDeathLinkKill())
             {

@@ -157,6 +157,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="debug_commands.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="hooks\ce_deathlink.h" />
     <ClInclude Include="hooks\chapter_title.h" />
@@ -195,6 +196,7 @@
     <ClCompile Include="hooks\shell_command.cpp" />
     <ClCompile Include="hooks\shell_level_load.cpp" />
     <ClCompile Include="hooks\skull_hook.cpp" />
+    <ClCompile Include="debug_commands.cpp" />
     <ClCompile Include="deathlink.cpp" />
     <ClCompile Include="item_handler.cpp" />
     <ClCompile Include="minhook\src\buffer.c" />

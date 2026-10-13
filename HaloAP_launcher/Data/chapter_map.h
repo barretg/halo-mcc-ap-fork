@@ -14,11 +14,12 @@ namespace haloap {
         return mission + ":" + std::to_string(index);
     }
 
-    // Chapter location mapping
+    // Chapter location mapping. The index is the title's position in the map's cutscene
+    // title block; tools/ce_chapter_titles.py lists each map's titles and checks this table.
     inline const std::unordered_map<std::string, ChapterDef>& GetChapterMap() {
         static const std::unordered_map<std::string, ChapterDef> map = {
             // a10 - Pillar of Autumn
-            { "a10:0", { 101011, "Reveillie" } },
+            { "a10:0", { 101011, "Reveille" } },
             { "a10:2", { 101012, "AI Constructs and Cyborgs First!" } },
 
             // a30 - Halo
@@ -28,7 +29,9 @@ namespace haloap {
             //a50 - The Truth and Reconciliation
             { "a50:0", { 103011, "Truth and Reconciliation" } },
             { "a50:1", { 103012, "Into the Belly of the Beast" } },
-            { "a50:2", { 103013, "Shut up and get Behind me...Sir" } },
+            // The card is two titles (4 and 5); 2 and 3 have the same text but aren't used
+            { "a50:4", { 103013, "Shut up and get Behind me...Sir" } },
+            { "a50:5", { 103013, "Shut up and get Behind me...Sir" } },
             
             //b30 - The Silent Cartographer
             { "b30:0", { 104011, "The Silent Cartographer" } },
@@ -64,8 +67,10 @@ namespace haloap {
             
             //d40 - The Maw
             {"d40:0", {110011, "...And the Horse You Rode In On"} },
+            // "Light Fuse," (1) and "Run Away" (3) are one card
             {"d40:1", {110012, "Light Fuse, Run Away"} },
-            {"d40:3", {110013, "Warning: Hitchhikers May Be Escaping Convicts"} },
+            {"d40:3", {110012, "Light Fuse, Run Away"} },
+            {"d40:2", {110013, "Warning: Hitchhikers May Be Escaping Convicts"} },
         };
         return map;
     }

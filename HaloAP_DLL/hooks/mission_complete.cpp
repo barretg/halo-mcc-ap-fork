@@ -68,6 +68,12 @@ namespace haloap {
         return buffer;
     }
 
+    bool DebugWinMission() {
+        if (!g_hookTarget) return false;
+        ((GameWonFn)g_hookTarget)();
+        return true;
+    }
+
     bool InstallMissionCompleteHook(PipeClient* pipe) {
         g_pipe = pipe;
 
