@@ -80,6 +80,7 @@ CHAPTER_DATA: Dict[str, tuple[str, int]] = {
     for _game, _missions in MISSIONS.items()
     for _number, _mission in enumerate(_missions, start=1)
     for _n, _chapter in enumerate(_mission.chapters, start=1)
+    if not _chapter.unused
 }
 
 # Halo 4 mission starts: several H4 missions show no chapter card when they begin (Dawn

@@ -1,5 +1,5 @@
 # Known Bugs
-- Chapters that happen in a skippable cutscene will not send their location if the cutscene is skipped. They are sent when you complete the mission instead
+- Chapters whose card is in a skippable cutscene are sent even if it's skipped: cards in a mission's opening cutscene (CE Halo, Keyes, The Maw; H3 The Covenant) and Reveille (only shown solo on Normal) are sent when the mission loads, and CE T&R's two mid-mission ones when their cutscene starts. Completing a mission also sends all its chapters, as a fallback.
 - Skull count in mission select does not always reflect the amount of skulls actually enabled. As long as the skull count in the mission is correct you are fine
 
 ## Reporting new bugs

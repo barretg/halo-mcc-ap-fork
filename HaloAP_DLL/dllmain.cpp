@@ -18,6 +18,7 @@
 #include "hooks/load_level_solo.h"
 #include "hooks/mission_select_block.h"
 #include "hooks/chapter_title.h"
+#include "hooks/mission_segment.h"
 #include "hooks/skull_hook.h"
 #include "hooks/ce_deathlink.h"
 
@@ -91,6 +92,7 @@ namespace
         haloap::InstallMissionLoadHook(g_pipe);
         haloap::InstallLoadLevelSoloHook(g_pipe);
         haloap::InstallChapterTitleHook(g_pipe);
+        haloap::InstallMissionSegmentHook(g_pipe);
         haloap::InstallSkullHook(g_pipe);
         haloap::InstallCeDeathLinkHook(g_pipe);
     }
@@ -102,6 +104,7 @@ namespace
         haloap::UninstallMissionCompleteHook();
         haloap::UninstallMissionIdLookupHook();
         haloap::UninstallChapterTitleHook();
+        haloap::UninstallMissionSegmentHook();
         haloap::UninstallSkullHook();
         haloap::UninstallCeDeathLinkHook();
     }

@@ -265,6 +265,26 @@ namespace haloap {
                 }
             }
             std::cout << "[launcher] Map: " << m_mission << "\n";
+            auto ce = MISSION_CODE_TO_INDEX.find(m_mission);
+            if (ce != MISSION_CODE_TO_INDEX.end() && IsMissionUnlocked(1, ce->second, MISSION_CODE_TO_INDEX.size()))
+                SendLoadLocations(1, ce->second);
+            return true;
+        }
+        const std::string segmentPrefix = "SEGMENT:";
+        if (message.rfind(segmentPrefix, 0) == 0)
+        {
+            // "SEGMENT:<map>:<segment>", CE only: a cutscene is about to play
+            std::string key = message.substr(segmentPrefix.size());
+            std::string map = key.substr(0, key.find(':'));
+            auto ce = MISSION_CODE_TO_INDEX.find(map);
+            if (ce == MISSION_CODE_TO_INDEX.end() || !IsMissionUnlocked(1, ce->second, MISSION_CODE_TO_INDEX.size()))
+                return true;
+            auto& segments = haloap::GetSegmentChapterMap();
+            auto it = segments.find(key);
+            if (it != segments.end()) {
+                std::cout << "[ap] Chapter (cutscene " << key << "): " << it->second.name << "\n";
+                SendLocation(it->second.locationId);
+            }
             return true;
         }
         const std::string chapterPrefix = "CHAPTER:";
@@ -351,6 +371,7 @@ namespace haloap {
                 std::cout << "[ap] game " << code << " mission start: " << mission.name << "\n";
                 if (mission.startLocationId)
                     SendLocation(mission.startLocationId);
+                SendLoadLocations(code, index);
             }
             else if (isSkull) {
                 // An exact key first; H2 skulls that aren't told apart match any pickup
@@ -486,6 +507,25 @@ namespace haloap {
                 SendLocation(mission.startLocationId);
             for (const auto& chapter : mission.chapters)
                 SendLocation(chapter.locationId);
+        }
+    }
+
+    bool APBridge::SeedHasLocation(int64_t locationId) {
+        // Unknown until the slot is connected; the server ignores IDs a seed doesn't have
+        if (!m_client || !m_slotConnected.load())
+            return true;
+        return m_client->get_missing_locations().count(locationId) ||
+               m_client->get_checked_locations().count(locationId);
+    }
+
+    void APBridge::SendLoadLocations(int code, int index) {
+        for (const auto& order : GetGameMissionOrders()) {
+            if (order.code != code || index < 0 || index >= int(order.missions.size())) continue;
+            for (int64_t id : order.missions[index].loadLocationIds) {
+                if (!SeedHasLocation(id)) continue;
+                std::cout << "[ap] sent on mission load: " << id << "\n";
+                SendLocation(id);
+            }
         }
     }
 

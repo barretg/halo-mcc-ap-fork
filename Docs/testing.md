@@ -38,10 +38,23 @@ mission start, so it can tell whether the card is shown on every playthrough, on
 difficulties or solo, only if a cutscene isn't skipped, or never. `-v` prints the script
 path. Halo 4 only runs with `--game h4`: its kit scripts differ from the shipped game.
 
-Findings on 2026-10-13: H3 The Storm "Think Big" is never shown (the Scarab card is
-"Judgment"); CE "Reveille" is solo Normal only; H2 Gravemind's last three cards are never
-started in the kit's scripts (unconfirmed in game); six cards are in skippable cutscenes.
-Chapters a player can miss are still sent when the mission is won.
+Chapters the tables send another way (on mission load, or at a CE cutscene's mission
+segment) and chapters removed as locations are marked and not counted; the last line counts
+what's left, which should be 0.
+
+Findings on 2026-10-13: H3 The Storm "Think Big" and H2 Gravemind's last three cards are
+never shown, and were removed as locations (`unused=True` in missions.py keeps their IDs
+reserved; older seeds get them when the mission loads). CE "Reveille" is solo Normal only,
+and six cards are in skippable cutscenes; those are sent on load or at the cutscene.
+
+### Halo 2 against the shipped maps
+
+```
+python3 tools/h2_shipped_chapters.py [<map> ...] [-v]
+```
+
+H2's kit scripts and the shipped game can differ, so this reads the compiled scripts from
+MCC's own H2 maps (decompressed on the fly) and checks every H2 chapter the same way.
 
 ## Hooks in the game (one mission load)
 

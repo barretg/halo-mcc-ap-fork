@@ -75,4 +75,16 @@ namespace haloap {
         return map;
     }
 
+    // Chapters whose card is in a skippable cutscene in the middle of a mission, keyed
+    // "missionCode:segment": the mission script calls (mcc_mission_segment "<segment>") right
+    // before the cutscene, skipped or not, and the DLL reports it as SEGMENT:<map>:<segment>.
+    // Cards in a mission's opening cutscene are sent when it loads instead (mission_order.h).
+    inline const std::unordered_map<std::string, ChapterDef>& GetSegmentChapterMap() {
+        static const std::unordered_map<std::string, ChapterDef> map = {
+            { "a50:cine2_into_the_belly", { 103012, "Into the Belly of the Beast" } },
+            { "a50:cine3_keyes_in_brig", { 103013, "Shut up and get Behind me...Sir" } },
+        };
+        return map;
+    }
+
 }  // namespace haloap

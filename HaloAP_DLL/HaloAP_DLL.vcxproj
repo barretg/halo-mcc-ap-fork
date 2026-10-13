@@ -161,6 +161,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="hooks\ce_deathlink.h" />
     <ClInclude Include="hooks\chapter_title.h" />
+    <ClInclude Include="hooks\mission_segment.h" />
     <ClInclude Include="hooks\game_hooks.h" />
     <ClInclude Include="hooks\load_level_solo.h" />
     <ClInclude Include="hooks\mission_complete.h" />
@@ -187,6 +188,7 @@
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="hooks\ce_deathlink.cpp" />
     <ClCompile Include="hooks\chapter_title.cpp" />
+    <ClCompile Include="hooks\mission_segment.cpp" />
     <ClCompile Include="hooks\game_hooks.cpp" />
     <ClCompile Include="hooks\load_level_solo.cpp" />
     <ClCompile Include="hooks\mission_complete.cpp" />

@@ -11,6 +11,9 @@ Archipelago: see tools/ap_local.py. Everything else goes in build/test/. Needs w
 clang-cl and the xwin SDK (see build-launcher-clangcl.sh).
 """
 import argparse
+import pickle
+import zipfile
+import zlib
 import os
 import shutil
 import subprocess
@@ -19,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 
-from ap_local import GAME, Server, generate, item_ids, wait_for
+from ap_local import AP_DIR, GAME, Server, generate, item_ids, wait_for
 
 REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "build/test"
@@ -86,9 +89,34 @@ def wine_env() -> dict:
     return env
 
 
+# A location removed from the apworld (H3 The Storm "Think Big"), put back into the test seed
+# so it looks like one made before the removal. Gravemind's removed chapters stay out.
+LEGACY_LOCATION = 305012
+
+
 def generate_seed() -> Path:
     print("== generating a seed")
-    return generate(OUT, YAML)
+    multidata = generate(OUT, YAML)
+    add_location(multidata, LEGACY_LOCATION)
+    return multidata
+
+
+def add_location(multidata: Path, location: int) -> None:
+    """Adds a location to slot 1 of a generated multidata, holding a copy of one of its items."""
+    with zipfile.ZipFile(multidata) as z:
+        name = next(n for n in z.namelist() if n.endswith(".archipelago"))
+        members = {n: z.read(n) for n in z.namelist()}
+    raw = members[name]
+    # the pickle refers to Archipelago's classes (NetUtils...)
+    if str(AP_DIR) not in sys.path:
+        sys.path.insert(0, str(AP_DIR))
+    data = pickle.loads(zlib.decompress(raw[1:]))
+    slot = data["locations"][1]
+    slot[location] = next(iter(slot.values()))
+    members[name] = raw[:1] + zlib.compress(pickle.dumps(data))
+    with zipfile.ZipFile(multidata, "w", zipfile.ZIP_DEFLATED) as z:
+        for n, b in members.items():
+            z.writestr(n, b)
 
 
 def checked() -> set[int]:
@@ -205,13 +233,13 @@ def h3_locked_mission_ignored(ctx: Ctx):
     storm = 305000
     if ctx.slot_data["starting_missions"].get("h3") == "Halo 3: The Storm":
         return {"skipped: The Storm is the starting mission"}
-    ctx.launcher.send("G_CHAPTER:3:040_voi:1")
-    leaked = ctx.expect_not({305012})
+    ctx.launcher.send("G_CHAPTER:3:040_voi:2")
+    leaked = ctx.expect_not({305013})
     if leaked:
         return leaked
     ctx.give("Halo 3: The Storm Access")
-    ctx.launcher.send("G_CHAPTER:3:040_voi:1")
-    return ctx.expect({305012})
+    ctx.launcher.send("G_CHAPTER:3:040_voi:2")
+    return ctx.expect({305013})
 
 
 @test
@@ -219,7 +247,7 @@ def h3_win_sends_chapters(ctx: Ctx):
     """An H3 win sends the mission and all its chapters"""
     ctx.give("Halo 3: The Storm Access")
     ctx.launcher.send("G_COMPLETE:3:040_voi")
-    return ctx.expect({305000, 305011, 305012, 305013})
+    return ctx.expect({305000, 305011, 305013})
 
 
 @test
@@ -248,6 +276,48 @@ def check_while_server_down(ctx: Ctx):
     time.sleep(2)
     ctx.server.start()
     return ctx.expect({302011}, timeout=30)
+
+
+@test
+def ce_load_sends_opening_cards(ctx: Ctx):
+    """Loading a CE mission sends the card in its skippable opening cutscene (and Reveille,
+    which only shows solo on Normal)"""
+    for item in ("Halo CE: Halo Access", "Halo CE: The Pillar of Autumn Access"):
+        if item in ctx.ids:
+            ctx.give(item)
+    ctx.launcher.send("MISSION_LOAD: path='levels\\a30\\a30'", "MISSION_LOAD: path='levels\\a10\\a10'")
+    return ctx.expect({102011, 101011})
+
+
+@test
+def ce_segment_sends_cutscene_card(ctx: Ctx):
+    """The segment before a mid-mission CE cutscene sends its card, skipped or not"""
+    if "Halo CE: The Truth and Reconciliation Access" in ctx.ids:
+        ctx.give("Halo CE: The Truth and Reconciliation Access")
+    ctx.launcher.send("SEGMENT:a50:cine2_into_the_belly", "SEGMENT:a50:cine3_keyes_in_brig",
+                      "SEGMENT:a50:cine4_final")
+    return ctx.expect({103012, 103013})
+
+
+@test
+def h3_load_sends_opening_card(ctx: Ctx):
+    """Loading H3 The Covenant sends Trident, whose card is in the skippable intro"""
+    ctx.give("Halo 3: The Covenant Access")
+    ctx.launcher.send("G_START:3:100_citadel")
+    return ctx.expect({308011})
+
+
+@test
+def removed_location_sent_on_load(ctx: Ctx):
+    """An older seed's removed chapter (Think Big) is sent when its mission loads; a removed
+    chapter the seed doesn't have (Gravemind's) isn't sent at all"""
+    ctx.give("Halo 3: The Storm Access")
+    ctx.give("Halo 2: Gravemind Access")
+    ctx.launcher.send("G_START:3:040_voi", "G_START:2:07a_highcharity")
+    missing = ctx.expect({LEGACY_LOCATION})
+    log = (OUT / "launcher.log").read_text(errors="replace")
+    stray = {f"sent {i}" for i in (212012, 212013, 212014) if f"sent on mission load: {i}" in log}
+    return missing | stray
 
 
 @test

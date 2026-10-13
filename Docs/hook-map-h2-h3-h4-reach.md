@@ -151,7 +151,7 @@ per map.
 | `05b_deltatowers` | 0: Testament, 1: One-Way Ticket, 2: Pressure (`title_2alt`), 3: Sorry, Were You in the Middle of Something? |
 | `06a_sentinelwalls` | 0: Uncomfortable Silence, 1: Buyer's Remorse, 2: 100,000 Years' War (3 is a cinematic location card) |
 | `06b_floodzone` | 0: Objects in Mirror are Larger Than They Appear, 1: Healthy Competition, 2: Shooting Gallery, 3: That Old, Familiar Feeling |
-| `07a_highcharity` | 0: Inside Job, 1: You Can Thank Me Later, 2: Grudge-Match, 3: Turning in Their Graves |
+| `07a_highcharity` | 0: Inside Job (1–3, You Can Thank Me Later / Grudge-Match / Turning in Their Graves, are in scripts nothing starts, in the kit and the shipped map) |
 | `07b_forerunnership` | 0: Cross-Purposes, 1: Please, Make Yourself at Home, 2: Sanctified, 3: Once More, With Feeling |
 | `08a_deltacliffs` | 0: Oh, So That's How it Is, 1: Step Aside, Let the Man Go Through, 2: Fight Club |
 | `08b_deltacontrol` | 0: Your Ass, My Size-24 Hoof, 1: Backseat Driver, 2: Delusions and Grandeur |

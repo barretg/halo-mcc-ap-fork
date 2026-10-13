@@ -26,6 +26,14 @@ from .skulls import GAME_INFO
 class Chapter(NamedTuple):
     name: str
     key: int | tuple[int, ...] | str
+    # A title the game never shows (cut, or its script is never started; see
+    # tools/chapter_audit.py). It's no longer a location, but keeps its place so the IDs of
+    # the chapters after it don't change, and the launcher sends it when its mission loads
+    # for seeds made before it was removed.
+    unused: bool = False
+    # The card is in the mission's opening cutscene, which can be skipped: the launcher sends
+    # it when the mission loads
+    on_load: bool = False
 
 
 class Mission(NamedTuple):
@@ -65,9 +73,11 @@ H2_MISSIONS: list[Mission] = [
     Mission("Quarantine Zone", "06b_floodzone", (
         C("Objects in Mirror are Larger Than They Appear", 0), C("Healthy Competition", 1),
         C("Shooting Gallery", 2), C("That Old, Familiar Feeling", 3))),
+    # Only "Inside Job" is ever shown: nothing starts the other three title scripts, in the
+    # kit or in the shipped map
     Mission("Gravemind", "07a_highcharity", (
-        C("Inside Job", 0), C("You Can Thank Me Later", 1),
-        C("Grudge-Match", 2), C("Turning in Their Graves", 3))),
+        C("Inside Job", 0), C("You Can Thank Me Later", 1, unused=True),
+        C("Grudge-Match", 2, unused=True), C("Turning in Their Graves", 3, unused=True))),
     Mission("Uprising", "08a_deltacliffs", (
         C("Oh, So That's How it Is", 0), C("Step Aside, Let the Man Go Through", 1),
         C("Fight Club", 2))),
@@ -89,13 +99,13 @@ H3_MISSIONS: list[Mission] = [
     Mission("Tsavo Highway", "030_outskirts", (
         C("Full Contact Safari", 0), C("The Broken Path", 1))),
     Mission("The Storm", "040_voi", (
-        C("Ghost Town", 0), C("Think Big", 1), C("Judgment", 2))),
+        C("Ghost Town", 0), C("Think Big", 1, unused=True), C("Judgment", 2))),
     Mission("Floodgate", "050_floodvoi", (
         C("It Followed Me Home", 0), C("Shadow of Intent", 1), C("Infinite Devil Machine", 2))),
     Mission("The Ark", "070_waste", (
         C("Installation 00", 0), C("Forward Unto Dawn", 1), C("Real Men Don't Read Maps", 2))),
     Mission("The Covenant", "100_citadel", (
-        C("Trident", 0), C("If You Want it Done Right...", 1),
+        C("Trident", 0, on_load=True), C("If You Want it Done Right...", 1),
         C("Journey's End", 2), C("Revelation", 3))),
     Mission("Cortana", "110_hc", (
         C("Rampant", 0), C("Nor Hell a Fury...", 1))),

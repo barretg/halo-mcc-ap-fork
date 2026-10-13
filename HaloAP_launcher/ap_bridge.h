@@ -45,6 +45,9 @@ namespace haloap {
         // Sends a mission's chapter (and mission start) locations; on a win, so a card the
         // hook missed (a skipped cutscene) still counts
         void SendMissionChapters(int code, int index);
+        // The mission's loadLocationIds (mission_order.h) that this seed has
+        void SendLoadLocations(int code, int index);
+        bool SeedHasLocation(int64_t locationId);
 
         bool IsConnected() const { return m_slotConnected.load(); }
         bool IsSocketConnected() const { return m_socketConnected.load(); }

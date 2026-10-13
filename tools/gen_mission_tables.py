@@ -27,6 +27,15 @@ CE = [("The Pillar of Autumn", "a10"), ("Halo", "a30"), ("The Truth and Reconcil
       ("The Silent Cartographer", "b30"), ("Assault on the Control Room", "b40"),
       ("343 Guilty Spark", "c10"), ("The Library", "c20"), ("Two Betrayals", "c40"),
       ("Keyes", "d20"), ("The Maw", "d40")]
+# CE chapters sent when their mission loads (CE's chapters are in chapter_map.h, not
+# missions.py): cards in a skippable opening cutscene, and Reveille, which is only shown
+# solo on Normal (the cryo tutorial; see tools/chapter_audit.py)
+CE_ON_LOAD = {
+    "a10": (101011,),  # Reveille
+    "a30": (102011,),  # Flawless Cowboy
+    "d20": (109011,),  # Under New Management
+    "d40": (110011,),  # ...And the Horse You Rode In On
+}
 GAMES = [("h2a", 2, "H2_MISSIONS"), ("h3", 3, "H3_MISSIONS"), ("h4", 4, "H4_MISSIONS"),
          ("reach", 6, "REACH_MISSIONS")]
 
@@ -61,7 +70,8 @@ def parse_missions():
                     chapters = []
                     if len(call.args) > 2:
                         for ch in call.args[2].elts:
-                            chapters.append((literal(ch.args[0]), literal(ch.args[1])))
+                            flags = {k.arg for k in ch.keywords if literal(k.value)}
+                            chapters.append((literal(ch.args[0]), literal(ch.args[1]), flags))
                     cinematic = any(k.arg == "cinematic" and literal(k.value) for k in call.keywords)
                     missions.append((name, map_name, chapters, cinematic))
                 lists[target.id] = missions
@@ -99,6 +109,9 @@ def main():
         "        int64_t startLocationId;  // 0: no mission-start location",
         "        std::vector<ChapterKeyDef> chapters;",
         "        std::vector<ChapterKeyDef> skulls;  // key: what the DLL reports; 0xFFFFFFFF matches any",
+        "        // Sent when the mission loads, if the seed has them: chapters whose card is in a",
+        "        // skippable opening cutscene, and chapters removed as locations (older seeds)",
+        "        std::vector<int64_t> loadLocationIds;",
         "    };",
         "",
         "    struct GameMissionOrder {",
@@ -112,15 +125,20 @@ def main():
     ]
     out.append('            {"ce", 1, {')
     for name, map_name in CE:
-        out.append(f"                {{{cstr(name)}, {cstr(map_name)}, 0, {{}}, {{}}}},")
+        ids = ", ".join(str(i) for i in CE_ON_LOAD.get(map_name, ()))
+        out.append(f"                {{{cstr(name)}, {cstr(map_name)}, 0, {{}}, {{}}, {{{ids}}}}},")
     out.append("            }},")
     for key, code, list_name in GAMES:
         out.append(f'            {{"{key}", {code}, {{')
         for number, (name, map_name, chapters, cinematic) in enumerate(lists[list_name], start=1):
             offset = code * 100000 + number * 1000
             start = offset + CHAPTER_OFFSET if key in MISSION_START_GAMES and not cinematic else 0
-            entries = []
-            for n, (chapter, keys) in enumerate(chapters, start=1):
+            entries, on_load = [], []
+            for n, (chapter, keys, flags) in enumerate(chapters, start=1):
+                if flags & {"unused", "on_load"}:
+                    on_load.append(offset + CHAPTER_OFFSET + n)
+                if "unused" in flags:
+                    continue
                 keys = keys if isinstance(keys, tuple) else (keys,)
                 for k in keys:
                     if isinstance(k, str):
@@ -133,11 +151,12 @@ def main():
             for n, (skull, k) in enumerate(skulls.get(key, {}).get(map_name, []), start=1):
                 out.append(f"                    {{{k & 0xFFFFFFFF}u, {offset + SKULL_LOCATION_OFFSET + n}, "
                            f"{cstr(skull + ' Skull')}}},")
-            out.append("                }},")
+            out.append("                }, {" + ", ".join(str(i) for i in on_load) + "}},")
         out.append("            }},")
     out += ["        };", "        return orders;", "    }", "", "}  // namespace haloap", ""]
     open(OUT, "w").write("\n".join(out))
     print("wrote", OUT)
 
 
-main()
+if __name__ == "__main__":
+    main()

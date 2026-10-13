@@ -118,6 +118,8 @@ def load() -> dict[str, list[Mission]]:
             m = Mission(game, n, src.name, src.map, src.cinematic)
             level = _missions.level_name(game, src)
             for chapter in src.chapters:
+                if chapter.unused:
+                    continue
                 keys = chapter.key if isinstance(chapter.key, tuple) else (chapter.key,)
                 if game == "reach":
                     keys = tuple(reach_sids[src.map][k] for k in keys)

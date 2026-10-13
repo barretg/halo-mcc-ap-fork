@@ -10,7 +10,9 @@ chapter is then one of:
   never        no running script shows it (a cut title, or a script that's commented out)
 
 Checks on the insertion point aren't counted: they only skip a card when the mission is
-started from a later checkpoint. It also lists chapter cards the scripts do show that have no location.
+started from a later checkpoint. It also lists chapter cards the scripts do show that have no location. Chapters the tables
+send some other way (when the mission loads, or at the cutscene's mission segment) and
+chapters removed as locations are marked as such and not counted.
 
     python tools/chapter_audit.py [--game ce|h2a|h3|h4|reach] [--kits <dir>] [-v]
 
@@ -304,18 +306,29 @@ def h2_block(path: Path) -> list[str]:
 # --- the tables ----------------------------------------------------------------------
 
 def table(game: str):
-    """[(mission name, map, [(chapter name, keys)])] from missions.py / chapter_map.h."""
+    """[(mission name, map, [(chapter name, keys, how)])] from missions.py / chapter_map.h.
+    how: "removed" (no longer a location), "on load" / "at its cutscene" (sent even when the
+    card is missed), or "" (sent when the card shows)."""
     if game == "ce":
-        # gen_mission_tables.CE; not imported, since importing it regenerates mission_order.h
-        CE = [("The Pillar of Autumn", "a10"), ("Halo", "a30"), ("The Truth and Reconciliation", "a50"),
-              ("The Silent Cartographer", "b30"), ("Assault on the Control Room", "b40"),
-              ("343 Guilty Spark", "c10"), ("The Library", "c20"), ("Two Betrayals", "c40"),
-              ("Keyes", "d20"), ("The Maw", "d40")]
+        from gen_mission_tables import CE, CE_ON_LOAD
         text = (REPO / "HaloAP_launcher/Data/chapter_map.h").read_text(encoding="utf-8-sig")
+        segments = text[text.index("GetSegmentChapterMap"):]
+        by_segment = {int(i) for i in re.findall(r'\{\s*"\w+:\w+",\s*\{\s*(\d+),', segments)}
+        text = text[:text.index("GetSegmentChapterMap")]
         chapters: dict[str, dict[str, list]] = {}
-        for m, i, name in re.findall(r'"(\w+):(\d+)",\s*\{\s*\d+,\s*"([^"]*)"', text):
+        ids: dict[str, int] = {}
+        for m, i, loc, name in re.findall(r'"(\w+):(\d+)",\s*\{\s*(\d+),\s*"([^"]*)"', text):
             chapters.setdefault(m, {}).setdefault(name, []).append(int(i))
-        return [(n, code, list(chapters.get(code, {}).items())) for n, code in CE]
+            ids[name] = int(loc)
+        out = []
+        for n, code in CE:
+            chs = []
+            for cname, keys in chapters.get(code, {}).items():
+                how = ("on load" if ids[cname] in CE_ON_LOAD.get(code, ())
+                       else "at its cutscene" if ids[cname] in by_segment else "")
+                chs.append((cname, keys, how))
+            out.append((n, code, chs))
+        return out
     src = (REPO / "apworld/halo_mcc/data/missions.py").read_text()
     tree = ast.parse(src)
     var = {"h2a": "H2_MISSIONS", "h3": "H3_MISSIONS", "h4": "H4_MISSIONS", "reach": "REACH_MISSIONS"}[game]
@@ -330,7 +343,9 @@ def table(game: str):
                     if len(call.args) > 2:
                         for c in call.args[2].elts:
                             cname, key = ast.literal_eval(c.args[0]), ast.literal_eval(c.args[1])
-                            chs.append((cname, list(key) if isinstance(key, tuple) else [key]))
+                            flags = {k.arg for k in c.keywords if ast.literal_eval(k.value)}
+                            how = "removed" if "unused" in flags else "on load" if "on_load" in flags else ""
+                            chs.append((cname, list(key) if isinstance(key, tuple) else [key], how))
                     out.append((name, map_, chs))
                 return out
     raise SystemExit(f"{var} not found in missions.py")
@@ -529,7 +544,7 @@ def run(game: str, kits: Path, verbose: bool) -> int:
         shown, dead = reach(level, game)
         lines = []
         mapped = set()
-        for cname, keys in chapters:
+        for cname, keys, how in chapters:
             names = []
             for k in keys:
                 if isinstance(k, str):
@@ -542,7 +557,15 @@ def run(game: str, kits: Path, verbose: bool) -> int:
             paths = [p for n in names for p in shown.get(n, [])]
             paths.sort(key=lambda x: len(x[0]))
             v, why = verdict(paths)
-            if v != "ok":
+            if how == "removed":
+                if v == "never":
+                    lines.append(f"  removed     {cname} (not a location; older seeds get it on load)")
+                    continue
+                problems += 1
+                why = ["marked unused, but a script shows it"] + why
+            elif v != "ok" and how:
+                v = f"{v}, sent {how}"
+            elif v != "ok":
                 problems += 1
             keytxt = ", ".join(f"{k}={n}" if not isinstance(k, str) else k for k, n in zip(keys, names))
             extra = ""
@@ -554,6 +577,8 @@ def run(game: str, kits: Path, verbose: bool) -> int:
             elif why:
                 extra = "  [" + "; ".join(why) + "]"
             lines.append(f"  {v:11} {cname} ({keytxt}){extra}")
+            if how == "removed":
+                lines[-1] = f"  !! {v} {cname} ({keytxt}){extra}"
             if verbose and paths:
                 lines.append(f"              via {fmt_path(paths[0][1])}")
         # cards the scripts show that no location covers
@@ -595,7 +620,7 @@ def main() -> int:
             print("!! Halo 4's kit scripts differ from the shipped build: chapters live-verified in game\n"
                   "!! (Infinity, Composer) show as never here. Treat these results as a guide only.\n")
         total += run(g, a.kits, a.verbose)
-    print(f"\n{total} chapters not shown on every playthrough")
+    print(f"\n{total} chapters a player can miss that nothing else sends")
     return 1 if total else 0
 
 
