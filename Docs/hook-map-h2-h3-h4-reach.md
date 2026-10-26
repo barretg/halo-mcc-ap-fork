@@ -213,3 +213,34 @@ H3's mission scripts call these for player0..3 once the skull weapon is held. On
 but the table of skull events it sends MCC covers all 15 and nothing else reads it, so the
 shipped maps are assumed to call it for every skull. Per-map skulls and keys are in
 `apworld/halo_mcc/data/missions.py` (`SKULL_PICKUPS`).
+
+### Skull spawns on every difficulty
+
+The mission scripts only place skulls on some difficulties: H2 on Legendary (all but Blind),
+H3 on Normal and up. Each check is the only difficulty check in its script, so the DLL hooks
+the difficulty getter's evaluator and returns Legendary when the calling script thread runs
+one of these scripts (found in the shipped maps; the names appear in no other map):
+
+| Game | Getter | Scripts |
+|---|---|---|
+| H2 | `game_difficulty_get`, through the map's static `difficulty_legendary` | the skull's own script (`icecream`, `ice_cream_check`, `e18_key`, `e10_key`, `e11_key`) or the one that wakes it with `(if (difficulty_legendary) (wake ...))` (`dogfight_firsttime_start`, `flood_lab_start`, `old_temple_start`, `gondola_01_start`, `enc_conduit_b`, `mission_floodzone`, `enc_tower_a_ext`), and IWHBYD's `e5b_main` |
+| H3 | `game_difficulty_get_real`, through the map's static `award_skull` or inline | `gs_award_primary_skull`, `gs_award_secondary_skull`, `gs_create_primary_skull`, `070_award_primary_skull`, `070_award_secondary_skull`, `hc_award_primary_skull`, `hc_award_secondary_skull` |
+
+Evaluators take `(function index, thread, initialize)` and tail-jump to `hs_return(thread,
+value)`. Naming the thread's script:
+
+- H2: the thread array is a data array global (`halo2+0x15F6788`, 0x620-byte datums, data at
+  header + `[header+0x48]`); datum `+4` is the script index. The scripts block (40-byte
+  entries, name first) is at the offset in `[scenario]+0x1BC` (`scenario` = `halo2+0xE6F768`),
+  added to `[halo2+0xE80AC0]` with the top bit cleared if it's set, else to `[halo2+0xE80AB0]`.
+- H3: `halo3+0x1051FC(thread)` returns the thread; `+2` is the script index (short). The scripts
+  block (0x34-byte entries) is at `[halo3+0x1FCF4C8] + 4 * [[halo3+0xA46A08]+0x3F0]`.
+
+IWHBYD (Old Mombasa) is a 1-in-8 event: `e5b_main` gives up unless `(random_range 0 7)` is 0,
+so `random_range`'s evaluator is hooked too and returns its low bound to that script. It gets
+its arguments from the call at the start of the evaluator (`halo2+0x6F9E60`, `(function,
+thread, initialize)`, nullptr until they're evaluated; low bound in the first 4-byte slot).
+Its co-op check is kept: the sequence only teleports and bounds-checks `player0`.
+
+H3's `award_skull` also needs insertion point 0 and a finished campaign; MCC's
+`campaign_is_finished_*` evaluators always return true.

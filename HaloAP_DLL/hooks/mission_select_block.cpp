@@ -111,6 +111,21 @@ namespace haloap
         std::atomic<int> g_setupAllocs{0};
         std::mutex g_setupTypesMutex;
         std::string g_setupTypes;
+
+        // Out of line: functions with __try can't hold a lock_guard (it needs unwinding)
+        void ClearSetupTypes()
+        {
+            std::lock_guard<std::mutex> lock(g_setupTypesMutex);
+            g_setupTypes.clear();
+        }
+
+        void LogSetup(int screenId, void* controller)
+        {
+            std::lock_guard<std::mutex> lock(g_setupTypesMutex);
+            printf("[menu] list setup: screen=%d game=%d controller=%p adds=%d allocs=%d types=[%s]\n",
+                   screenId, GetLobbyGame(), controller, g_setupAdds.load(), g_setupAllocs.load(),
+                   g_setupTypes.c_str());
+        }
         std::atomic<bool> g_nextItemLocked{false};
         std::atomic<uint32_t> g_collapseGeneration{0};
         PipeClient* g_pipe = nullptr;
@@ -650,7 +665,7 @@ namespace haloap
     g_rallyList.store(false);
     g_rallyAdds.store(0);
     g_rallyFirstItem.store(nullptr);
-    { std::lock_guard<std::mutex> lock(g_setupTypesMutex); g_setupTypes.clear(); }
+    ClearSetupTypes();
     g_inSetup.store(true);
 
     g_missionCounter.store(0);
@@ -694,12 +709,7 @@ namespace haloap
     g_inSetup.store(false);
     if (g_rallyList.load())
         printf("[hook] Rally point list: kept only %p of %d adds\n", g_rallyFirstItem.load(), g_rallyAdds.load());
-    {
-        std::lock_guard<std::mutex> lock(g_setupTypesMutex);
-        printf("[menu] list setup: screen=%d game=%d controller=%p adds=%d allocs=%d types=[%s]\n",
-               screenId, GetLobbyGame(), controller, g_setupAdds.load(), g_setupAllocs.load(),
-               g_setupTypes.c_str());
-    }
+    LogSetup(screenId, controller);
 
     printf("[hook] Chapter tab setup complete, %d allocs\n", totalAllocs);
 }

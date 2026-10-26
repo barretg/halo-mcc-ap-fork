@@ -190,7 +190,8 @@ class SkullPickup(NamedTuple):
 #       index for campaign_metagame_award_secondary_skull (from the H3EK mission scripts).
 #   H2: the flavor passed to ice_cream_flavor_stock (H2EK mission scripts). Outskirts is the
 #       only mission with two skulls; the others match any pickup on their map.
-#       Every H2 skull except Blind only spawns on Legendary.
+#       The game places every H2 skull except Blind only on Legendary (H3: Normal and up);
+#       the DLL makes them spawn on every difficulty.
 S = SkullPickup
 SKULL_PICKUPS: dict[str, dict[str, tuple[SkullPickup, ...]]] = {
     "h2a": {

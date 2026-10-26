@@ -44,6 +44,12 @@ namespace haloap {
         // and respawning doesn't. A received link kills every player from the same hook, so
         // the kill runs on the game thread. H2 inlines that check, so it hooks what runs on
         // the edge and gets its tick from the all-dead getter instead.
+        //
+        // Skull spawns: the mission scripts only place a skull on some difficulties (H2:
+        // Legendary, H3: Normal and up). Those checks call the difficulty getter from a few
+        // known scripts, and nothing else in those scripts depends on the difficulty, so the
+        // getter's evaluator is hooked and answers Legendary when the script thread asking
+        // is one of them. Every other script gets the real difficulty.
 
         enum class PostWin { ShellQuit, ClearWonFlag };
 
@@ -78,6 +84,27 @@ namespace haloap {
             const char* playerPattern;
         };
 
+        enum class ThreadKind {
+            H2Array,    // [global] is the hs thread data array (0x620-byte datums)
+            H3Getter,   // the match is the function from thread handle to thread
+        };
+
+        struct SkullGateDef {
+            const char* difficultyFn;       // script function the skull checks call
+            ThreadKind threadKind;
+            const char* threadPattern;
+            // The scenario's scripts block: the load of the scenario global and where the
+            // block's base pointers are in the match (H2: negative, positive offset)
+            const char* scriptsPattern;
+            int scenarioAt, baseAt[2];
+            const char* const* scripts;     // threads running these get Legendary
+            int scriptCount;
+            // H2: random_range, whose low bound threads running these get instead of a roll
+            const char* randomFn;
+            const char* const* randomScripts;
+            int randomScriptCount;
+        };
+
         struct GameDef {
             int code;                   // apworld game code
             const char* dll;
@@ -96,6 +123,7 @@ namespace haloap {
             // H3: the per-frame step that, after a win, asks MCC for the next mission and
             // starts it (returns true if it did)
             const char* advancePattern = nullptr;
+            SkullGateDef gate = {};         // difficultyFn nullptr: skulls are left alone
         };
 
         const char* const kH2Maps[] = {
@@ -107,6 +135,25 @@ namespace haloap {
         const char* const kH3Maps[] = {
             "005_intro", "010_jungle", "020_base", "030_outskirts", "040_voi", "050_floodvoi",
             "070_waste", "100_citadel", "110_hc", "120_halo", "130_epilogue",
+        };
+
+        // Scripts whose only difficulty check decides whether a skull spawns (checked against
+        // the shipped maps; the names appear in no other map). H2: the skull's own script, or
+        // the one that wakes it with (if (difficulty_legendary) (wake ...)). H3: every skull
+        // script, through award_skull or its own (>= (game_difficulty_get_real) normal).
+        const char* const kH2SkullGates[] = {
+            "icecream", "ice_cream_check", "e18_key", "e10_key", "e11_key",
+            "dogfight_firsttime_start", "flood_lab_start", "old_temple_start",
+            "gondola_01_start", "enc_conduit_b", "mission_floodzone", "enc_tower_a_ext",
+            "e5b_main",
+        };
+        // IWHBYD (Old Mombasa): e5b_main also gives up unless (random_range 0 7) is 0, so it
+        // gets 0. Its co-op check stays: the sequence only handles player0.
+        const char* const kH2SkullRolls[] = { "e5b_main" };
+        const char* const kH3SkullGates[] = {
+            "gs_award_primary_skull", "gs_award_secondary_skull", "gs_create_primary_skull",
+            "070_award_primary_skull", "070_award_secondary_skull",
+            "hc_award_primary_skull", "hc_award_secondary_skull",
         };
 
         // game_lost(bool) in H3 and Reach, which compile it the same way
@@ -134,7 +181,16 @@ namespace haloap {
                 "66 83 88 ? ? 00 00 20",
                 "48 89 5C 24 08 57 48 83 EC 20 E8 ? ? ? ? 48 8B 0D ? ? ? ? BA FF FF FF FF 8B F8 "
                 "E8 ? ? ? ? 8B D8 83 F8 FF 74 ? 0F 1F 80 00 00 00 00 48 8B 0D ? ? ? ? 48 8B 51 48 "
-                "48 85 D2 74 ? 4C 8D 04 0A EB ? 45 33 C0 0F B7 D3 48 69 C2 ? ? ? ? 42 8B 54 00 ?" } },
+                "48 85 D2 74 ? 4C 8D 04 0A EB ? 45 33 C0 0F B7 D3 48 69 C2 ? ? ? ? 42 8B 54 00 ?" },
+              nullptr,
+              // In hs_return: the thread array load, and the scripts block lookup
+              { "game_difficulty_get", ThreadKind::H2Array,
+                "48 8B 05 ? ? ? ? 8B DA 33 FF 48 8B 50 48 4C 8D 04 02 48 85 D2 75 03 44 8B C7 "
+                "0F B7 C9 48 69 ? 20 06 00 00",
+                "48 8B 05 ? ? ? ? 48 8B D7 48 63 88 BC 01 00 00 83 F9 FF 74 ? 85 C9 79 ? 8B D1 "
+                "0F BA F2 1F 48 03 15 ? ? ? ? EB ? 48 8B D1 48 03 15 ? ? ? ?", 3, { 35, 47 },
+                kH2SkullGates, sizeof(kH2SkullGates) / sizeof(kH2SkullGates[0]),
+                "random_range", kH2SkullRolls, sizeof(kH2SkullRolls) / sizeof(kH2SkullRolls[0]) } },
             { 3, "halo3.dll",
               "48 83 EC 28 8B 15 ? ? ? ? 45 33 C0", 0, ChapterKind::TitleIndex,
               "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 E8 ? ? ? ? 33 FF",
@@ -150,7 +206,14 @@ namespace haloap {
                 "48 8B 04 C8 4D 8B 14 02 45 85 C0 78 ? 45 3B 42 ? 7D ? 41 8B 42 ? 41 0F AF C0 48 63 C8 "
                 "49 03 4A ? 66 44 39 19 74 ? 45 85 C9 74 ? 41 FF C9 41 FF C0 41 83 F8 04 7D ? EB ? 8B 51 ?" },
               "40 55 48 8D AC 24 B0 00 FF FF B8 50 00 01 00 E8 ? ? ? ? 48 2B E0 48 C7 44 24 60 FE FF FF FF "
-              "48 89 9C 24 78 00 01 00 0F 29 B4 24 40 00 01 00 33 DB" },
+              "48 89 9C 24 78 00 01 00 0F 29 B4 24 40 00 01 00 33 DB",
+              // The thread getter, and the scripts block lookup in hs_return
+              { "game_difficulty_get_real", ThreadKind::H3Getter,
+                "8B 15 ? ? ? ? 65 48 8B 04 25 58 00 00 00 0F B7 C9 4C 8B 04 D0 48 8D 04 49 "
+                "BA 40 03 00 00 B9 A0 03 00 00",
+                "48 8B 05 ? ? ? ? 8B 88 F0 03 00 00 85 C9 75 ? 33 D2 EB ? 48 8B 05 ? ? ? ? "
+                "48 8D 14 88", 3, { 24, -1 },
+                kH3SkullGates, sizeof(kH3SkullGates) / sizeof(kH3SkullGates[0]), nullptr, nullptr, 0 } },
             { 4, "halo4.dll",
               "48 83 EC 28 8B 15 ? ? ? ? 45 33 DB 65 48 8B 04 25 58 00 00 00 44 8B D1", 0,
               ChapterKind::TitleIndex,
@@ -228,6 +291,21 @@ namespace haloap {
 
             void* skullTarget[2] = {};
             void* skullOriginal[2] = {};
+
+            // Skull spawns: the difficulty getter's evaluator, and what's needed to name the
+            // script thread calling it (see SkullGateScript)
+            void* difficultyTarget = nullptr;
+            void* difficultyOriginal = nullptr;
+            void* randomTarget = nullptr;
+            void* randomOriginal = nullptr;
+            // Evaluates a script function's arguments; nullptr until they're all evaluated
+            void* (*hsArguments)(uint64_t fn, uint64_t thread, uint64_t init) = nullptr;
+            void (*hsReturn)(uint32_t thread, uint32_t value) = nullptr;
+            uint8_t** threadArray = nullptr;                // H2
+            uint8_t* (*threadGet)(uint32_t thread) = nullptr; // H3
+            uint8_t** scenario = nullptr;
+            uint8_t** scriptsBase[2] = {};
+            char lastGate[32] = {};     // last gate script logged, so polling isn't logged
 
             // ShellQuit
             void** engineGlobal = nullptr;
@@ -569,6 +647,120 @@ namespace haloap {
             case 1: return (void*)&DetourShell<1>;
             case 2: return (void*)&DetourShell<2>;
             case 3: return (void*)&DetourShell<3>;
+            }
+            return nullptr;
+        }
+
+        // The name (char[32]) of the script a thread is running, or nullptr.
+        //   H2: thread datum +4 is the script index (int); the scenario's scripts block
+        //       (40-byte entries) is at scenario+0x1BC, an offset from one of two bases
+        //       (top bit set: the first).
+        //   H3: thread +2 is the script index (short); the block (0x34-byte entries) is at
+        //       base + 4 * [scenario+0x3F0].
+        // Game thread only (H3's getter reads the thread's TLS).
+        const char* ThreadScriptName(int gi, uint32_t thread)
+        {
+            const GameState& st = g_state[gi];
+            __try
+            {
+                uint8_t* scenario = *st.scenario;
+                if (!scenario) return nullptr;
+                if (kGames[gi].gate.threadKind == ThreadKind::H2Array)
+                {
+                    uint8_t* threads = *st.threadArray;
+                    int64_t dataOffset = threads ? *(int64_t*)(threads + 0x48) : 0;
+                    if (!dataOffset) return nullptr;
+                    int32_t script = *(int32_t*)(threads + dataOffset + (thread & 0xFFFF) * 0x620 + 4);
+                    int32_t block = *(int32_t*)(scenario + 0x1BC);
+                    if (script < 0 || block == -1) return nullptr;
+                    uint8_t* scripts = block < 0 ? *st.scriptsBase[0] + (uint32_t)(block & 0x7FFFFFFF)
+                                                 : *st.scriptsBase[1] + block;
+                    return (const char*)(scripts + script * 40);
+                }
+                uint8_t* t = st.threadGet(thread);
+                int16_t script = t ? *(int16_t*)(t + 2) : -1;
+                uint32_t block = *(uint32_t*)(scenario + 0x3F0);
+                if (script < 0 || !block) return nullptr;
+                return (const char*)(*st.scriptsBase[0] + block * 4ull + script * 0x34);
+            }
+            __except (1) { return nullptr; }
+        }
+
+        // Which of scripts a thread is running, or nullptr
+        const char* SkullGateScript(int gi, uint32_t thread, const char* const* scripts, int count)
+        {
+            const char* name = ThreadScriptName(gi, thread);
+            if (!name) return nullptr;
+            __try
+            {
+                for (int i = 0; i < count; i++)
+                    if (strncmp(name, scripts[i], 32) == 0)
+                        return scripts[i];
+            }
+            __except (1) {}
+            return nullptr;
+        }
+
+        void LogSkullGate(int gi, const char* gate, const char* what)
+        {
+            GameState& st = g_state[gi];
+            if (strncmp(st.lastGate, gate, sizeof(st.lastGate)) == 0) return;
+            strncpy(st.lastGate, gate, sizeof(st.lastGate) - 1);
+            printf("[game] %s: %s %s so its skull spawns\n", kGames[gi].dll, gate, what);
+        }
+
+        // The difficulty getter's evaluator, (function index, thread, initialize). A skull
+        // gate gets Legendary (3), returned the way the evaluator returns its value.
+        template <int GI>
+        void DetourDifficulty(uint64_t fn, uint64_t thread, uint64_t init)
+        {
+            GameState& st = g_state[GI];
+            const SkullGateDef& def = kGames[GI].gate;
+            if (const char* gate = SkullGateScript(GI, (uint32_t)thread, def.scripts, def.scriptCount))
+            {
+                LogSkullGate(GI, gate, "checks the difficulty; answering Legendary");
+                st.hsReturn((uint32_t)thread, 3);
+                return;
+            }
+            auto original = (void (*)(uint64_t, uint64_t, uint64_t))st.difficultyOriginal;
+            if (original) original(fn, thread, init);
+        }
+
+        // random_range's evaluator: once its (short low, short high) arguments are
+        // evaluated, a skull roll gets low instead of low + a roll below high - low
+        template <int GI>
+        void DetourRandomRange(uint64_t fn, uint64_t thread, uint64_t init)
+        {
+            GameState& st = g_state[GI];
+            const SkullGateDef& def = kGames[GI].gate;
+            if (const char* gate = SkullGateScript(GI, (uint32_t)thread, def.randomScripts, def.randomScriptCount))
+            {
+                const int16_t* args = (const int16_t*)st.hsArguments(fn, thread, init);
+                if (!args) return;
+                LogSkullGate(GI, gate, "rolls random_range; answering its low bound");
+                st.hsReturn((uint32_t)thread, (uint16_t)args[0]);
+                return;
+            }
+            auto original = (void (*)(uint64_t, uint64_t, uint64_t))st.randomOriginal;
+            if (original) original(fn, thread, init);
+        }
+
+        void* DifficultyDetourFor(int gi)
+        {
+            switch (gi)
+            {
+            case 0: return (void*)&DetourDifficulty<0>;
+            case 1: return (void*)&DetourDifficulty<1>;
+            }
+            return nullptr;
+        }
+
+        void* RandomRangeDetourFor(int gi)
+        {
+            switch (gi)
+            {
+            case 0: return (void*)&DetourRandomRange<0>;
+            case 1: return (void*)&DetourRandomRange<1>;
             }
             return nullptr;
         }
@@ -1029,10 +1221,9 @@ namespace haloap {
             return p >= mi.lpBaseOfDll && (const uint8_t*)p < (const uint8_t*)mi.lpBaseOfDll + mi.SizeOfImage;
         }
 
-        // A script function's implementation, found through its definition: the definition
-        // holds a pointer to the function's name and, 0x18 bytes on, its evaluator; the
-        // evaluator reads the arguments and calls the implementation right after "mov ecx, [rax]".
-        void* FindScriptImpl(HMODULE module, const char* name)
+        // A script function's evaluator, found through its definition: the definition holds
+        // a pointer to the function's name and, 0x18 bytes on, its evaluator
+        uint8_t* FindScriptEvaluator(HMODULE module, const char* name)
         {
             MODULEINFO mi = {};
             if (!GetModuleInformation(GetCurrentProcess(), module, &mi, sizeof(mi))) return nullptr;
@@ -1052,17 +1243,102 @@ namespace haloap {
                 for (size_t i = 0; i + 0x20 <= size && !evaluator; i += 8)
                     if (*(uint8_t**)(base + i) == str)
                         evaluator = *(uint8_t**)(base + i + 0x18);
-                if (!evaluator || evaluator < base || evaluator >= base + size) return nullptr;
+                return (evaluator >= base && evaluator < base + size) ? evaluator : nullptr;
+            }
+            __except (1) {}
+            return nullptr;
+        }
 
+        // A script function's implementation: the evaluator reads the arguments and calls
+        // it right after "mov ecx, [rax]"
+        void* FindScriptImpl(HMODULE module, const char* name)
+        {
+            uint8_t* evaluator = FindScriptEvaluator(module, name);
+            if (!evaluator) return nullptr;
+            __try
+            {
                 for (int i = 0; i < 0x30; i++)
                     if (evaluator[i] == 0x8B && evaluator[i + 1] == 0x08 && evaluator[i + 2] == 0xE8)
                     {
                         uint8_t* impl = evaluator + i + 7 + *(int32_t*)(evaluator + i + 3);
-                        return (impl >= base && impl < base + size) ? impl : nullptr;
+                        return InModule(module, impl) ? impl : nullptr;
                     }
             }
             __except (1) {}
             return nullptr;
+        }
+
+        // hs_return, which an evaluator with no arguments tail-jumps to with (thread, value):
+        // "add rsp, imm8", an optional "pop rbx", then "jmp rel32"
+        void* FindEvaluatorReturn(HMODULE module, uint8_t* evaluator)
+        {
+            __try
+            {
+                for (int i = 0; i < 0x40; i++)
+                {
+                    if (evaluator[i] != 0x48 || evaluator[i + 1] != 0x83 || evaluator[i + 2] != 0xC4) continue;
+                    uint8_t* jmp = evaluator + i + 4;
+                    if (*jmp == 0x5B) jmp++;
+                    if (*jmp != 0xE9) return nullptr;
+                    uint8_t* target = jmp + 5 + *(int32_t*)(jmp + 1);
+                    return InModule(module, target) ? target : nullptr;
+                }
+            }
+            __except (1) {}
+            return nullptr;
+        }
+
+        void InstallSkullGate(int gi, HMODULE module)
+        {
+            const SkullGateDef& gate = kGames[gi].gate;
+            GameState& st = g_state[gi];
+            if (!gate.difficultyFn) return;
+            const char* dll = kGames[gi].dll;
+
+            uint8_t* evaluator = FindScriptEvaluator(module, gate.difficultyFn);
+            void* hsReturn = evaluator ? FindEvaluatorReturn(module, evaluator) : nullptr;
+            uint8_t* threads = (uint8_t*)FindPatternInModule(module, gate.threadPattern);
+            uint8_t* scripts = (uint8_t*)FindPatternInModule(module, gate.scriptsPattern);
+            if (!hsReturn || !threads || !scripts)
+            {
+                printf("[game] %s: %s not found; skulls spawn only on their usual difficulties\n", dll,
+                       !evaluator ? gate.difficultyFn : !hsReturn ? "hs_return" :
+                       !threads ? "script threads" : "scripts block");
+                return;
+            }
+
+            if (gate.threadKind == ThreadKind::H2Array)
+                st.threadArray = RipTarget<uint8_t*>(threads, 3);
+            else
+                st.threadGet = (uint8_t* (*)(uint32_t))threads;
+            st.scenario = RipTarget<uint8_t*>(scripts, gate.scenarioAt);
+            for (int k = 0; k < 2; k++)
+                st.scriptsBase[k] = gate.baseAt[k] < 0 ? nullptr : RipTarget<uint8_t*>(scripts, gate.baseAt[k]);
+            st.hsReturn = (void (*)(uint32_t, uint32_t))hsReturn;
+
+            if (!Hook(gate.difficultyFn, dll, evaluator, DifficultyDetourFor(gi), &st.difficultyOriginal))
+                return;
+            st.difficultyTarget = evaluator;
+
+            if (!gate.randomFn) return;
+            // The evaluator's first call evaluates the arguments: "call rel32", with the
+            // evaluator's own (function, thread, initialize) still in rcx, edx, r8
+            uint8_t* random = FindScriptEvaluator(module, gate.randomFn);
+            uint8_t* call = nullptr;
+            __try
+            {
+                for (int i = 0; random && i < 0x20 && !call; i++)
+                    if (random[i] == 0xE8) call = random + i;
+                if (call) st.hsArguments = (void* (*)(uint64_t, uint64_t, uint64_t))(call + 5 + *(int32_t*)(call + 1));
+            }
+            __except (1) { st.hsArguments = nullptr; }
+            if (!st.hsArguments || !InModule(module, (void*)st.hsArguments))
+            {
+                st.hsArguments = nullptr;
+                printf("[game] %s: %s not found; skull rolls stay random\n", dll, gate.randomFn);
+            }
+            else if (Hook(gate.randomFn, dll, random, RandomRangeDetourFor(gi), &st.randomOriginal))
+                st.randomTarget = random;
         }
 
         // The global CreateGameEngine stores the engine object in: the last
@@ -1125,6 +1401,15 @@ namespace haloap {
             DropHook(st.wonTarget, st.wonOriginal, sameModule);
             DropHook(st.skullTarget[0], st.skullOriginal[0], sameModule);
             DropHook(st.skullTarget[1], st.skullOriginal[1], sameModule);
+            DropHook(st.difficultyTarget, st.difficultyOriginal, sameModule);
+            DropHook(st.randomTarget, st.randomOriginal, sameModule);
+            st.hsArguments = nullptr;
+            st.hsReturn = nullptr;
+            st.threadArray = nullptr;
+            st.threadGet = nullptr;
+            st.scenario = nullptr;
+            st.scriptsBase[0] = st.scriptsBase[1] = nullptr;
+            st.lastGate[0] = 0;
             DropHook(st.shellTarget, st.shellOriginal, sameModule);
             DropHook(st.levelLoadTarget, st.levelLoadOriginal, sameModule);
             DropHook(st.launchTarget, st.launchOriginal, sameModule);
@@ -1216,6 +1501,8 @@ namespace haloap {
                 else if (Hook(def.skulls[k].name, def.dll, impl, SkullDetourFor(gi, k), &st.skullOriginal[k]))
                     st.skullTarget[k] = impl;
             }
+
+            InstallSkullGate(gi, module);
         }
 
         // The engine object only exists once MCC has created it, so the shell command hook
@@ -1254,7 +1541,8 @@ namespace haloap {
             const void* targets[] = { st.chapterTarget, st.wonTarget, st.skullTarget[0],
                                       st.skullTarget[1], st.shellTarget, st.launchTarget,
                                       st.levelLoadTarget, st.advanceTarget,
-                                      st.lostTarget, st.tickTarget };
+                                      st.lostTarget, st.tickTarget, st.difficultyTarget,
+                                      st.randomTarget };
             for (const void* target : targets)
             {
                 if (!target) continue;
