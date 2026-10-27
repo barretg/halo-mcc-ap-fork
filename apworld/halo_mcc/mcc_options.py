@@ -234,7 +234,7 @@ class H2SkullPickups(Toggle):
     happens in solo play instead of one time in eight.
     """
     display_name = "Halo 2 Skull Pickups"
-    default = False
+    default = True
 
 
 class H3SkullPickups(Toggle):
