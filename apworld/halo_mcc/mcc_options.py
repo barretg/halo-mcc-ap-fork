@@ -227,6 +227,14 @@ class ReachMissionsRequired(Range):
     default = 10
 
 
+class HCESkullPickups(Toggle):
+    """
+    Picking up a Halo: Combat Evolved skull in a mission is a location.
+    """
+    display_name = "Halo: Combat Evolved Skull Pickups"
+    default = True
+
+
 class H2SkullPickups(Toggle):
     """
     Picking up a Halo 2 skull in a mission is a location. Skulls spawn on every difficulty
@@ -274,6 +282,7 @@ class MCCOptions(PerGameCommonOptions):
     h3_enabled: H3Enabled
     h3_final_mission: H3FinalMission
     h3_missions_required: H3MissionsRequired
+    hce_skull_pickups: HCESkullPickups
     h2_skull_pickups: H2SkullPickups
     h3_skull_pickups: H3SkullPickups
     h4_enabled: H4Enabled

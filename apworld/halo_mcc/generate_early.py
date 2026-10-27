@@ -34,6 +34,8 @@ def _apply_tracker_slot_data(world) -> dict | None:
     options.skull_item_mode.value = slot_data.get("skull_item_mode", options.skull_item_mode.default)
     # skulls_required isn't in 1.2/1.3 slot data; assume those seeds kept the default
     options.skulls_required.value = slot_data.get("skulls_required", options.skulls_required.default)
+    # Seeds before this option always had CE skull locations
+    options.hce_skull_pickups.value = slot_data.get("hce_skull_pickups", 1)
     options.h2_skull_pickups.value = slot_data.get("h2_skull_pickups", 0)
     options.h3_skull_pickups.value = slot_data.get("h3_skull_pickups", 0)
     return {

@@ -72,6 +72,7 @@ class MCCWorld(World):
             "starting_missions": {game: legacy(level) for game, level in self.starting_missions.items()},
             "enabled_games": self.enabled_games,
             "skulls_required": self.options.skulls_required.value,
+            "hce_skull_pickups": self.options.hce_skull_pickups.value,
             "h2_skull_pickups": self.options.h2_skull_pickups.value,
             "h3_skull_pickups": self.options.h3_skull_pickups.value,
             "death_link": self.options.death_link.value,

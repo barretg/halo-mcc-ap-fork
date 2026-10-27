@@ -51,7 +51,7 @@ def create_locations(world):
 
     if "ce" in world.enabled_games:
         for location, data in CE_LOCATION_DATA.items():
-            if data.type in ("Chapter", "Skull"):
+            if data.type == "Chapter" or (data.type == "Skull" and world.options.hce_skull_pickups.value):
                 region = world.get_region(data.level)
                 location = MCCLocation(world.player, f"{data.level} - {location}", data.id, region)
                 region.locations.append(location)
