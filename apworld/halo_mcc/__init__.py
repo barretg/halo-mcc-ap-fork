@@ -4,6 +4,7 @@ from .mcc_options import MCCOptions
 from . import regions, locations, items, rules, generate_early, goal
 from typing import Any
 from .data.levels import CURRENT_TO_LEGACY_CE_LEVEL, LEGACY_ITEM_NAMES
+from .generate_early import CUTSCENE_GAMES, GAME_OPTION_PREFIX
 
 class MCCWorld(World):
     """
@@ -31,6 +32,8 @@ class MCCWorld(World):
     game_missions: dict[str, list[str]]  # game key -> its levels other than the final one
     missions_required: dict[str, int]  # game key -> missions needed to open the final one
     enabled_games: list[str]
+    levels: list[str]  # every level in this world (cutscene missions only when on)
+    excluded_levels: set[str]  # levels a rebuilt older seed didn't have
     game_skulls: dict[str, list[str]]
 
     #creates all logic for locations, entrances, and goal
@@ -75,6 +78,8 @@ class MCCWorld(World):
             "hce_skull_pickups": self.options.hce_skull_pickups.value,
             "h2_skull_pickups": self.options.h2_skull_pickups.value,
             "h3_skull_pickups": self.options.h3_skull_pickups.value,
+            "cutscene_missions": {game: getattr(self.options, f"{GAME_OPTION_PREFIX[game]}_cutscene_missions").value
+                                  for game in CUTSCENE_GAMES},
             "death_link": self.options.death_link.value,
             "death_link_amnesty": self.options.death_link_amnesty.value,
         }

@@ -223,8 +223,37 @@ class ReachMissionsRequired(Range):
     """
     display_name = "Halo Reach Missions Required for Final"
     range_start = 0
-    range_end = 10
-    default = 10
+    range_end = 11
+    default = 11
+
+
+class CutsceneMissions(Toggle):
+    """
+    Put this game's cutscene-only missions in the seed. Each gets an Access item and a
+    completion check (watch the cutscene to the end), and counts toward the final mission
+    like any other. When off they aren't in the seed and stay hidden in the menu.
+    """
+    default = False
+
+
+class H2CutsceneMissions(CutsceneMissions):
+    __doc__ = CutsceneMissions.__doc__ + "    Halo 2: The Heretic.\n"
+    display_name = "Halo 2 Cutscene Missions"
+
+
+class H3CutsceneMissions(CutsceneMissions):
+    __doc__ = CutsceneMissions.__doc__ + "    Halo 3: Arrival, Epilogue.\n"
+    display_name = "Halo 3 Cutscene Missions"
+
+
+class H4CutsceneMissions(CutsceneMissions):
+    __doc__ = CutsceneMissions.__doc__ + "    Halo 4: Prologue, Epilogue.\n"
+    display_name = "Halo 4 Cutscene Missions"
+
+
+class ReachCutsceneMissions(CutsceneMissions):
+    __doc__ = CutsceneMissions.__doc__ + "    Halo Reach: Noble Actual, Epilogue.\n"
+    display_name = "Halo Reach Cutscene Missions"
 
 
 class HCESkullPickups(Toggle):
@@ -279,17 +308,21 @@ class MCCOptions(PerGameCommonOptions):
     h2_enabled: H2Enabled
     h2_final_mission: H2FinalMission
     h2_missions_required: H2MissionsRequired
+    h2_cutscene_missions: H2CutsceneMissions
     h3_enabled: H3Enabled
     h3_final_mission: H3FinalMission
     h3_missions_required: H3MissionsRequired
+    h3_cutscene_missions: H3CutsceneMissions
     hce_skull_pickups: HCESkullPickups
     h2_skull_pickups: H2SkullPickups
     h3_skull_pickups: H3SkullPickups
     h4_enabled: H4Enabled
     h4_final_mission: H4FinalMission
     h4_missions_required: H4MissionsRequired
+    h4_cutscene_missions: H4CutsceneMissions
     reach_enabled: ReachEnabled
     reach_final_mission: ReachFinalMission
     reach_missions_required: ReachMissionsRequired
+    reach_cutscene_missions: ReachCutsceneMissions
     death_link: DeathLink
     death_link_amnesty: DeathLinkAmnesty

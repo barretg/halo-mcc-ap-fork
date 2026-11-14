@@ -13,8 +13,9 @@ in one place.
 IDs follow constants.py: game * 100000 + mission * 1000 for the mission (access item and
 completion location), + CHAPTER_OFFSET + n for its nth chapter.
 
-cinematic missions have no gameplay: they still have a completion location, but they are
-never picked as a starting or final mission.
+cinematic missions have no gameplay. They're only in a seed when the game's
+cutscene_missions option is on (then with an Access item and a completion location, like
+any other mission), and they are never picked as a starting or final mission.
 """
 
 from __future__ import annotations
@@ -170,6 +171,9 @@ REACH_MISSIONS: list[Mission] = [
         C("Shipbreaker", "ct_wall"), C("Keyes", "ct_platform"))),
     Mission("Lone Wolf", "m70_bonus", (
         C("There'll be Another Time...", "ct_hill"),)),
+    # In MCC's menu Epilogue comes before Lone Wolf. It's listed last so Lone Wolf keeps the
+    # IDs it had before Epilogue was added; the DLL's mission menu swaps the two back.
+    Mission("Epilogue", "m70_a", cinematic=True),
 ]
 
 MISSIONS: dict[str, list[Mission]] = {

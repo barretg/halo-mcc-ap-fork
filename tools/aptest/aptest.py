@@ -59,7 +59,7 @@ SLOT = "APTest"
 GAME = "Halo The Master Chief Collection"
 RELEASE = REPO / "build/release/HaloAP-Linux"
 
-# Every game, every final open from the start, skulls left alone
+# Every game and its cutscene missions, every final open from the start, skulls left alone
 YAML = f"""
 name: {SLOT}
 game: {GAME}
@@ -77,6 +77,10 @@ game: {GAME}
   skullsanity: off
   h2_skull_pickups: true
   h3_skull_pickups: true
+  h2_cutscene_missions: true
+  h3_cutscene_missions: true
+  h4_cutscene_missions: true
+  reach_cutscene_missions: true
   death_link: true
   death_link_amnesty: 0
 """

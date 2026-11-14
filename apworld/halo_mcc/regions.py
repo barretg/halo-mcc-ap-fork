@@ -1,5 +1,4 @@
 from BaseClasses import MultiWorld, Region, Entrance
-from .data.levels import LEVEL_DATA
 
 def create_regions(world):
     #create menu
@@ -7,9 +6,7 @@ def create_regions(world):
     world.multiworld.regions.append(menu_region)
 
     #create region for each level of the enabled games
-    for level, data in LEVEL_DATA.items():
-        if data.game not in world.enabled_games:
-            continue
+    for level in world.levels:
 
         #create the region
         region = Region(level, world.player, world.multiworld)

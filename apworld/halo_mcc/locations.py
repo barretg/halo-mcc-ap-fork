@@ -39,7 +39,7 @@ def completion_event_item(game):
 def create_locations(world):
     final_missions = set(world.final_missions.values())
     for level, data in LEVEL_DATA.items():
-        if data.game in world.enabled_games and level not in final_missions:
+        if level in world.levels and level not in final_missions:
             region = world.get_region(level)
             location = MCCLocation(world.player, f"{level} Complete", data.offset, region)
             region.locations.append(location)
@@ -57,7 +57,7 @@ def create_locations(world):
                 region.locations.append(location)
 
     for name, (level, location_id) in CHAPTER_DATA.items():
-        if LEVEL_DATA[level].game in world.enabled_games:
+        if level in world.levels:
             region = world.get_region(level)
             region.locations.append(MCCLocation(world.player, name, location_id, region))
 

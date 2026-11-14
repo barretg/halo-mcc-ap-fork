@@ -342,6 +342,9 @@ namespace haloap {
                     {25307u, 611011, "There'll be Another Time..."},
                 }, {
                 }, {}},
+                {"Epilogue", "m70_a", 0, {
+                }, {
+                }, {}},
             }},
         };
         return orders;

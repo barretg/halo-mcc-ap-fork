@@ -5,6 +5,11 @@ from .items import LEGACY_121_SCORING_SKULL_ITEMS, skull_items_for_game
 
 # option attribute prefix for each game key (Halo 2's options are h2_*, its key is h2a)
 GAME_OPTION_PREFIX = {"ce": "ce", "h2a": "h2", "h3": "h3", "h4": "h4", "reach": "reach"}
+# Games with cutscene-only missions, and so a cutscene_missions option
+CUTSCENE_GAMES = ("h2a", "h3", "h4", "reach")
+# Added after cutscene missions were first in seeds; a tracker rebuilding an older seed
+# leaves it out
+LEGACY_MISSING_LEVEL = "Halo Reach: Epilogue"
 
 
 def _option(world, game: str, name: str):
@@ -38,6 +43,12 @@ def _apply_tracker_slot_data(world) -> dict | None:
     options.hce_skull_pickups.value = slot_data.get("hce_skull_pickups", 1)
     options.h2_skull_pickups.value = slot_data.get("h2_skull_pickups", 0)
     options.h3_skull_pickups.value = slot_data.get("h3_skull_pickups", 0)
+    # Seeds before this option had every cutscene mission but Reach's Epilogue
+    cutscenes = slot_data.get("cutscene_missions")
+    for game in CUTSCENE_GAMES:
+        _option(world, game, "cutscene_missions").value = int(cutscenes[game] if cutscenes else True)
+    if cutscenes is None:
+        world.excluded_levels.add(LEGACY_MISSING_LEVEL)
     return {
         "final_missions": {game: current_level_name(level) for game, level in finals.items()},
         "starting_missions": {game: current_level_name(level)
@@ -48,6 +59,7 @@ def _apply_tracker_slot_data(world) -> dict | None:
 
 def generate_early(world):
     world.legacy_121 = False
+    world.excluded_levels = set()
     tracker = _apply_tracker_slot_data(world)
 
     # Games whose missions are in this world
@@ -59,17 +71,22 @@ def generate_early(world):
     world.starting_missions = {}
     world.game_missions = {}
     world.missions_required = {}
+    world.levels = []  # every level in this world, finals included
     for game in world.enabled_games:
-        levels = [level for level, data in LEVEL_DATA.items() if data.game == game]
-        playable = [level for level in levels if not LEVEL_DATA[level].cinematic]
+        all_levels = [level for level, data in LEVEL_DATA.items() if data.game == game]
+        playable = [level for level in all_levels if not LEVEL_DATA[level].cinematic]
+        cutscenes = game in CUTSCENE_GAMES and _option(world, game, "cutscene_missions").value
+        levels = [level for level in (all_levels if cutscenes else playable)
+                  if level not in world.excluded_levels]
+        world.levels.extend(levels)
 
-        # Final mission options count missions from 1 in play order. CE uses 11 for random;
+        # Final mission options count missions from 1 in data order. CE uses 11 for random;
         # the other games use 0.
         choice = _option(world, game, "final_mission").value
         if (game == "ce" and choice == 11) or (game != "ce" and choice == 0):
             final = world.random.choice(playable)
         else:
-            final = levels[choice - 1]
+            final = all_levels[choice - 1]
 
         if tracker:
             final = tracker["final_missions"][game]

@@ -2,13 +2,14 @@
 
 Checks that each game's mission menu hides the right entry before the final unlocks and
 shows (and starts) the right one after it unlocks. The DLL locks entries by their position
-in the menu, so an entry the apworld doesn't list (Reach's m70_a credits cinematic,
-between The Pillar of Autumn and Lone Wolf) shifts everything after it. That's the bug
-behind "Lone Wolf never showed up".
+in the menu, so a menu entry out of step with the apworld's list shifts everything after
+it. That's the bug behind "Lone Wolf never showed up" (Reach's Epilogue, m70_a, which is
+before Lone Wolf in the menu and after it in the apworld).
 
 The seed has every game, each with its default final (the last playable mission) and
-every other mission required.
-Every Access item except the finals is sent, so the menus show everything but the finals.
+every other mission required. Cutscene missions are left out (the default), or put in
+with --cutscenes. Every Access item except the finals is sent, so the menus show
+everything in the seed but the finals.
 
   1. locked:   for each game you open its mission list and say whether every mission
                except the final shows, and the final doesn't.
@@ -19,7 +20,7 @@ Every Access item except the finals is sent, so the menus show everything but th
 
 Typed here:  pass / p, fail <note> / f, skip, info, quit
 Needs a fresh build/release (./build.sh). Run with Archipelago's venv python:
-    ~/Projects/MoreProjects/Archipelago-src/.venv/bin/python tools/final_unlock_test.py
+    ~/Projects/MoreProjects/Archipelago-src/.venv/bin/python tools/final_unlock_test.py [--cutscenes]
 
 Results: build/final-unlock-test/results.txt. Logs: launcher.log, server.log there.
 """
@@ -60,9 +61,17 @@ game: {GAME}
   h3_enabled: true
   h4_enabled: true
   reach_enabled: true
+  h2_cutscene_missions: {{cutscenes}}
+  h3_cutscene_missions: {{cutscenes}}
+  h4_cutscene_missions: {{cutscenes}}
+  reach_cutscene_missions: {{cutscenes}}
   skullsanity: off
   death_link: false
 """
+
+# Missions whose menu place differs from their apworld order (a sort key between numbers):
+# Reach's Epilogue is listed after Lone Wolf (11) so Lone Wolf kept its IDs
+MENU_POSITION = {("reach", "m70_a"): 10.5}
 
 
 def say(text: str) -> None:
@@ -77,9 +86,13 @@ class Step:
 
 
 class Test:
-    def __init__(self):
+    def __init__(self, cutscenes: bool):
         OUT.mkdir(parents=True, exist_ok=True)
-        self.games = mission_data.load()
+        # The missions in the seed, in menu order
+        self.games = {
+            game: sorted((m for m in missions if cutscenes or not m.cinematic),
+                         key=lambda m: MENU_POSITION.get((m.game, m.map), m.number))
+            for game, missions in mission_data.load().items()}
         self.lock = threading.RLock()
         self.step_index = -1
         self.steps: list[Step] = []
@@ -92,7 +105,7 @@ class Test:
             raise SystemExit(f"something is already serving port {PORT} (an earlier run's "
                              "MultiServer?); stop it first")
         print("== generating a seed")
-        multidata = generate(OUT, YAML)
+        multidata = generate(OUT, YAML.format(cutscenes=str(cutscenes).lower()))
         (OUT / "server.log").unlink(missing_ok=True)
         self.server = Server(multidata, PORT, SLOT, OUT / "server.log")
         self.server.start()
@@ -291,7 +304,10 @@ class Test:
 
 
 def main() -> int:
-    test = Test()
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--cutscenes", action="store_true", help="put every game's cutscene missions in the seed")
+    test = Test(parser.parse_args().cutscenes)
     try:
         for line in sys.stdin:
             verb, _, arg = line.strip().partition(" ")
