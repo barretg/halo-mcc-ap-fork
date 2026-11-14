@@ -190,6 +190,18 @@ namespace haloap {
         m_client->set_items_received_handler([this](const std::list<APClient::NetworkItem>& items) { OnItemsReceived(items); });
         m_client->set_print_json_handler([this](const APClient::PrintJSONArgs& args) { OnPrintJson(args); });
         m_client->set_bounced_handler([this](const nlohmann::json& packet) { OnBounced(packet); });
+        // Checks made elsewhere (the server's /send_location, another client on this slot)
+        // count toward the finals too; the DLL hears of them without a reconnect
+        m_client->set_location_checked_handler([this](const std::list<int64_t>& locations) {
+            bool added = false;
+            {
+                std::lock_guard<std::mutex> lock(m_checkedMutex);
+                for (int64_t id : locations)
+                    added |= m_checkedLocations.insert(id).second;
+            }
+            if (added && m_slotConnected.load())
+                SendCompletionState();
+        });
 
         std::cout << "[ap] connecting to " << serverUri << " as slot '" << slot << "'...\n";
         return true;

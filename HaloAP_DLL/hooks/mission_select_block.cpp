@@ -606,6 +606,11 @@ namespace haloap
                 {
                     int currentItem = g_missionCounter.fetch_add(1);
                     int missionId = currentItem / 2;
+                    // Reach's menu has m70_a (the Pillar of Autumn credits cinematic) between
+                    // The Pillar of Autumn and Lone Wolf; the apworld doesn't list it. It goes
+                    // with The Pillar of Autumn, and Lone Wolf is apworld index 10.
+                    if (g_populatingGame.load() == 6 && missionId >= 10)
+                        missionId = (missionId == 10) ? 9 : missionId - 1;
                     bool isVisualItem = (currentItem % 2 == 1);
                     if (isVisualItem && !GetItemHandler().isMissionAllowed(g_populatingGame.load(), missionId))
                     {
